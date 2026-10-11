@@ -1,0 +1,7 @@
+*.o
+/hemisphere
+.vscode/
+*.log
+__pycache__/
+.venv/
+venv/

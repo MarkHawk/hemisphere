@@ -1,0 +1,19 @@
+# Live data for the Hemisphere orbit watch scene.
+#   sudo cp tools/orbitfeed.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now orbitfeed
+#   journalctl -u orbitfeed -f        (to watch what it is doing)
+[Unit]
+Description=Hemisphere orbit feed (satellites and earthquakes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/hemisphere
+ExecStart=/home/pi/hemisphere/venv/bin/python3 /home/pi/hemisphere/tools/orbitfeed.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
