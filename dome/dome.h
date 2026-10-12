@@ -1,5 +1,5 @@
 /*
- * dome.h  -  Hemisphere: a framework for the Gakken World Eye spherical display
+ * dome.h  -  Hemisphere: a framework for the Gakken WorldEye spherical display
  *
  * The core owns everything that is the same for every project: the window,
  * the lens calibration (calibration.cfg), the calibration grids, settings

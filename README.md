@@ -1,10 +1,10 @@
-# Hemisphere: a framework for the Gakken World Eye
+# Hemisphere: a framework for the Gakken WorldEye
 
 https://github.com/user-attachments/assets/eac9f6f6-ce7c-4442-ab63-b2b5ab97cd12
 
 
 
-Drives the Gakken World Eye spherical display from a Raspberry Pi 3, or
+Drives the Gakken WorldEye spherical display from a Raspberry Pi 3, or
 from a Windows PC (see [Windows PC](#windows-pc)). The screen is a 180
 degree dome lit from inside through a fisheye lens. The
 core here owns the lens calibration and everything else that is the same
@@ -13,7 +13,7 @@ and GLSL.
 
 ## Why I built this
 
-The Gakken World Eye is an interesting product, and surprisingly little has
+The Gakken WorldEye is an interesting product, and surprisingly little has
 been made for it. I wanted to drive mine from a Raspberry Pi 3 with my own
 visuals, starting with a Death Star. I chose the Pi 3 on purpose to
 optimise for cheap hardware (and I had one lying around).
@@ -103,7 +103,7 @@ hemisphere/
   tools/windows/           start-up scripts for a Windows PC
   deploy.sh                copy to the Pi and build (Git Bash, WSL or Linux)
   docs/screenshots/        photos for the gallery
-  calibration.cfg          calibration (my World Eye)
+  calibration.cfg          calibration (my WorldEye)
   deathstar.cfg            Death Star look
 ```
 
@@ -228,7 +228,7 @@ Settings are kept in files next to the program, in groups:
 
 | File | Group | Adjusted in | What it covers |
 |------|-------|-------------|----------------|
-| `calibration.cfg` | Calibration | Lens grid (G), globe grid (B) | How this World Eye's lens fits the dome. Set once per device. |
+| `calibration.cfg` | Calibration | Lens grid (G), globe grid (B) | How this WorldEye's lens fits the dome. Set once per device. |
 | `view.cfg` | View | Any scene | Orientation and spin, shared by every scene |
 | `deathstar.cfg` | Death Star | Death Star (1 or D) | The Death Star's look |
 | `planet.cfg` | Planet | Planet (2) | Brightness, shading, atmosphere |
@@ -267,7 +267,7 @@ install on the Pi, copy the two old files into `/home/pi/hemisphere`.
 | `rev_secs` | Seconds per full turn |
 | `res` | Colour resolution across the dome: lower is faster, higher is sharper |
 | `view_dist` | How far away you stand, in globe radii. Sets how strongly recesses such as the dish show depth |
-| `display` | Which screen the World Eye is on: 0 is the main one. Only matters on a PC with more than one screen (V steps through them) |
+| `display` | Which screen the WorldEye is on: 0 is the main one. Only matters on a PC with more than one screen (V steps through them) |
 
 The Moon, and the text in the Moon and orbit watch, follow `pitch` and
 `tilt` but never spin. The lava lamp, the sunshine face, smiley rain and rainbow face, radar, hyperspace and ship's computer
@@ -543,17 +543,17 @@ py -m venv venv
 venv\Scripts\pip install -r tools\requirements.txt
 ```
 
-### The World Eye as a second screen
+### The WorldEye as a second screen
 
-Plug the World Eye into a spare HDMI output and set Windows to **Extend
+Plug the WorldEye into a spare HDMI output and set Windows to **Extend
 these displays** (Settings, System, Display). Hemisphere opens full screen
-on display 0, the main one. Press **V** until it moves onto the World Eye,
+on display 0, the main one. Press **V** until it moves onto the WorldEye,
 then **S** to save; the choice is the `display` view setting, also on the
 web remote. Clicking on your other screen doesn't minimise the dome.
 
 Check the calibration on the lens grid (**G**) the first time. The
 calibration is in fractions of the screen, so it carries over from the Pi
-if the World Eye gets the same resolution, but a different HDMI mode moves
+if the WorldEye gets the same resolution, but a different HDMI mode moves
 things slightly.
 
 With the dome on a second screen, keys only reach Hemisphere when its
@@ -610,7 +610,7 @@ don't have this problem.
 | TAB / Shift+TAB | Next / previous setting in the current group |
 | LEFT / RIGHT | Adjust the selected setting (hold Shift for fine steps) |
 | O | Draw the globe grid over the current scene |
-| V | Move to the next screen (a PC with the World Eye as a second display) |
+| V | Move to the next screen (a PC with the WorldEye as a second display) |
 | X | Mirror left/right |
 | T | Spin the current grid on/off |
 | S or F5 | Save all settings files |

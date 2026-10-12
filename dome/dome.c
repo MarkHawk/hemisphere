@@ -1,5 +1,5 @@
 /*
- * dome.c  -  Hemisphere framework core for the Gakken World Eye spherical display
+ * dome.c  -  Hemisphere framework core for the Gakken WorldEye spherical display
  *
  * LENS MODEL
  *   For a lens a distance d behind the centre of a globe of radius R
@@ -21,7 +21,7 @@
  *   dots and colour line up exactly.
  *
  * SETTINGS FILES (next to the program)
- *   calibration.cfg  how this World Eye's lens fits the dome
+ *   calibration.cfg  how this WorldEye's lens fits the dome
  *                    (read from worldeye.cfg if missing: the old name)
  *   view.cfg       orientation and spin, shared by all scenes
  *   <scene>.cfg    each scene's own look
@@ -175,7 +175,7 @@ static Param g_view_params[] = {
     { "view_dist",&g_view.eye,      0.5f,    1.5f, 20.0f, 0,
       "how far you stand, in globe radii: sets how deep recesses look" },
     { "display",  &g_view.display,  1.0f,    0.0f, 7.0f, 0,
-      "which screen the World Eye is on: 0 main, 1 second... (V)" },
+      "which screen the WorldEye is on: 0 main, 1 second... (V)" },
 };
 #define N_VIEW ((int)(sizeof g_view_params / sizeof g_view_params[0]))
 
