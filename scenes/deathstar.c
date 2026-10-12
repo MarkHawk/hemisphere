@@ -261,12 +261,10 @@ static void draw(const DomeFrame *f)
     dome_points_aperture(g_dish, g_dish_cos);
     mat3 rot;
     if (L.trail > 0.0f) {
-        const float off[2] = { DEG2RAD(-6.0f), DEG2RAD(-3.0f) };
-        const float al[2]  = { 0.06f, 0.12f };
-        for (int i = 0; i < 2; i++) {
-            dome_rot_at(f, f->spin + off[i], rot);
-            dome_draw_points(&g_pts, rot, fminf(1.0f, f->fade * al[i] * L.trail * L.lines), L.dot_size);
-        }
+        /* one faint copy a few degrees behind: half the cost of the two
+         * copies it used to draw, and hard to tell apart on the globe */
+        dome_rot_at(f, f->spin + DEG2RAD(-4.0f), rot);
+        dome_draw_points(&g_pts, rot, fminf(1.0f, f->fade * 0.15f * L.trail * L.lines), L.dot_size);
     }
     dome_draw_points(&g_pts, f->rot, f->fade * L.lines, L.dot_size);
 }

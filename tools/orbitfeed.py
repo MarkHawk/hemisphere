@@ -58,7 +58,16 @@ def fetch(url, timeout=20):
 def write_atomic(path, text):
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(text)
-    os.replace(tmp, path)
+    # On Windows the swap fails while hemisphere has the file open for its
+    # brief read, so try again a moment later
+    for attempt in range(20):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(0.05)
 
 
 def refresh_tle(data, force=False):

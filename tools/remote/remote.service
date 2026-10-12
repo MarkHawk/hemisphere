@@ -1,0 +1,19 @@
+# Hemisphere web remote (http://<pi>:5000).
+#   sudo cp tools/remote/remote.service /etc/systemd/system/hemisphere-remote.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now hemisphere-remote
+#   journalctl -u hemisphere-remote -f        (to watch it)
+[Unit]
+Description=Hemisphere web remote
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/hemisphere
+ExecStart=/home/pi/hemisphere/venv/bin/python3 /home/pi/hemisphere/tools/remote/app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

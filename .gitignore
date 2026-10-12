@@ -1,7 +1,30 @@
+# build output
 *.o
 /hemisphere
-.vscode/
-*.log
-__pycache__/
-.venv/
+shot.ppm
+
+# Python
 venv/
+__pycache__/
+
+# live data written by tools/orbitfeed.py
+data/
+
+# settings saved on a Pi; the tuned calibration.cfg and deathstar.cfg
+# in the repo are committed on purpose
+view.cfg
+planet.cfg
+plasma.cfg
+julia.cfg
+kaleido.cfg
+life.cfg
+moon.cfg
+orbit.cfg
+groovy.cfg
+groovybaby.cfg
+scifi.cfg
+
+# Windows build and logs
+/hemisphere.exe
+/SDL2.dll
+logs/

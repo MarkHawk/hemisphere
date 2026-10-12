@@ -25,6 +25,13 @@
  *                    (read from worldeye.cfg if missing: the old name)
  *   view.cfg       orientation and spin, shared by all scenes
  *   <scene>.cfg    each scene's own look
+ *
+ * PLATFORMS
+ *   The Pi gets an OpenGL ES 2.0 context. On Windows the core asks the
+ *   graphics driver for an ES 2.0 context too (NVIDIA, Intel and AMD offer
+ *   one); if a driver will not, it falls back to desktop OpenGL 2.1 and
+ *   adjusts the shader text (see compile_sh), so scenes run unchanged.
+ *   DOME_GL=desktop forces the fallback, for testing.
  */
 
 #include "dome.h"
@@ -33,11 +40,35 @@
 #include <limits.h>
 #include <math.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <sys/stat.h>
+
+#ifdef _WIN32
+/* Windows: Winsock for the control channel; no terminal key reader (use
+ * the window or the web remote) */
+#include <winsock2.h>
+#include <ws2tcpip.h>
+typedef SOCKET ctl_sock;
+#define CTL_NONE INVALID_SOCKET
+#define ctl_close closesocket
+#ifndef SIO_UDP_CONNRESET
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
+#else
 #include <termios.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+typedef int ctl_sock;
+#define CTL_NONE (-1)
+#define ctl_close close
+#endif
 
 #define PI DOME_PI
 
@@ -102,10 +133,11 @@ typedef struct {
     float pitch, tilt, wobble, rev_secs;
     float res;                /* surface resolution, pixels on long side */
     float eye;                /* viewer distance, globe radii            */
+    float display;            /* which screen the dome is on, 0 = main   */
 } View;
 
 static Calib g_cal;
-static View  g_view = { 0.0f, 0.0f, 4.0f, 40.0f, 640.0f, 4.0f };
+static View  g_view = { 0.0f, 0.0f, 4.0f, 40.0f, 640.0f, 4.0f, 0.0f };
 
 static Param g_cal_params[] = {
     { "centre_x", &g_cal.centre_x, 0.005f, -0.5f, 0.5f, 0,
@@ -142,6 +174,8 @@ static Param g_view_params[] = {
       "colour resolution, pixels across: lower = faster, higher = sharper" },
     { "view_dist",&g_view.eye,      0.5f,    1.5f, 20.0f, 0,
       "how far you stand, in globe radii: sets how deep recesses look" },
+    { "display",  &g_view.display,  1.0f,    0.0f, 7.0f, 0,
+      "which screen the World Eye is on: 0 main, 1 second... (V)" },
 };
 #define N_VIEW ((int)(sizeof g_view_params / sizeof g_view_params[0]))
 
@@ -254,10 +288,36 @@ static void config_load(void)
 /* ================================================================== */
 /* GL helpers                                                          */
 /* ================================================================== */
+static int g_desktop_gl = 0;      /* 1 = desktop OpenGL fallback (Windows) */
+
+/* Desktop OpenGL 2.1 speaks GLSL 1.20, which is GLSL ES 1.00 minus the
+ * precision statements. Blank those out and name the version; everything
+ * else in the scenes' shaders is the same language. */
+static char *desktop_glsl(const char *src)
+{
+    static const char head[] = "#version 120\n#define lowp\n#define mediump\n#define highp\n";
+    size_t n = strlen(src);
+    char *out = malloc(sizeof head + n);
+    memcpy(out, head, sizeof head - 1);
+    char *body = out + sizeof head - 1;
+    memcpy(body, src, n + 1);
+    for (char *p = body; (p = strstr(p, "precision ")) != NULL; ) {
+        int start = (p == body || p[-1] == '\n' || p[-1] == ' ');
+        char *semi = strchr(p, ';');
+        if (!start || !semi) { p++; continue; }
+        memset(p, ' ', (size_t)(semi - p + 1));
+        p = semi + 1;
+    }
+    return out;
+}
+
 static GLuint compile_sh(GLenum type, const char *src)
 {
     GLuint s = glCreateShader(type);
+    char *alt = g_desktop_gl ? desktop_glsl(src) : NULL;
+    if (alt) src = alt;
     glShaderSource(s, 1, &src, NULL);
+    free(alt);
     glCompileShader(s);
     GLint ok; glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
@@ -747,16 +807,21 @@ void dome_rot_at(const DomeFrame *f, float spin, mat3 out)
 /* ================================================================== */
 /* Keys typed in the SSH terminal (PuTTY etc.)                         */
 /* ================================================================== */
+static volatile sig_atomic_t g_quit = 0;
+static void on_signal(int sig) { (void)sig; g_quit = 1; }
+
+#ifdef _WIN32
+/* Windows: keys come from the window or the web remote; Ctrl+C still quits */
+static void tty_restore(void) {}
+static void tty_init(void) { signal(SIGINT, on_signal); signal(SIGTERM, on_signal); }
+#else
 static struct termios g_old_tio;
 static int g_tty = 0;
-static volatile sig_atomic_t g_quit = 0;
 
 static void tty_restore(void)
 {
     if (g_tty) { tcsetattr(STDIN_FILENO, TCSANOW, &g_old_tio); g_tty = 0; }
 }
-
-static void on_signal(int sig) { (void)sig; g_quit = 1; }
 
 static void tty_init(void)
 {
@@ -772,6 +837,7 @@ static void tty_init(void)
     g_tty = 1;
     atexit(tty_restore);
 }
+#endif
 
 static void push_key(SDL_Keycode k, Uint16 mod)
 {
@@ -783,6 +849,9 @@ static void push_key(SDL_Keycode k, Uint16 mod)
     SDL_PushEvent(&e);
 }
 
+#ifdef _WIN32
+static void poll_tty(void) {}
+#else
 static void poll_tty(void)
 {
     if (!g_tty) return;
@@ -823,6 +892,7 @@ static void poll_tty(void)
         }
     }
 }
+#endif
 
 /* ================================================================== */
 /* Terminal output                                                     */
@@ -870,6 +940,7 @@ static void print_help(void)
     printf("  TAB          next setting (Shift+TAB: previous)\n"
            "  LEFT/RIGHT   adjust setting (Shift: fine)\n"
            "  X  mirror    T  spin grid    O  globe grid over the scene\n"
+           "  V  move to the next display (also the 'display' view setting)\n"
            "  S or F5 save   L reload   R reset this group   P print   H help\n"
            "  SPACE pause   UP/DOWN rotation speed   ESC quit\n"
            "  in the SSH terminal: UP/DOWN pick setting, [ ] fine, + - speed, q quit\n");
@@ -877,6 +948,169 @@ static void print_help(void)
         if (g_scenes[i]->keys_help)
             printf("  %s: %s\n", g_scenes[i]->name, g_scenes[i]->keys_help);
     fflush(stdout);
+}
+
+/* ================================================================== */
+/* Control channel                                                     */
+/*   A UDP socket on 127.0.0.1 (port 5005, or DOME_CTL_PORT), so only  */
+/*   programs on the Pi itself can reach it; the web remote in         */
+/*   tools/remote talks to it. One command per packet, one reply:      */
+/*     state               JSON: scene, settings, fps, feed age        */
+/*     scene <n>           0..scenes-1, or -2 lens grid, -1 globe grid */
+/*     key <k>             a key, as typed: n, m, c, s, space, up...   */
+/*     set <name> <value>  a setting in the current group              */
+/*     save                write all the settings files                */
+/* ================================================================== */
+static ctl_sock g_ctl = CTL_NONE;
+static int   g_ctl_mode = -99;           /* scene requested by the remote */
+static float g_fps;
+
+static void ctl_init(void)
+{
+    const char *pe = getenv("DOME_CTL_PORT");
+    int port = pe ? atoi(pe) : 5005;
+    if (port <= 0) return;                     /* DOME_CTL_PORT=0 turns it off */
+#ifdef _WIN32
+    WSADATA wsa;
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return;
+#endif
+    ctl_sock s = socket(AF_INET, SOCK_DGRAM, 0);
+    if (s == CTL_NONE) return;
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof a);
+    a.sin_family = AF_INET;
+    a.sin_port = htons((unsigned short)port);
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (bind(s, (struct sockaddr *)&a, sizeof a) != 0) {
+        printf("Control channel: port %d is busy, remote control off\n", port);
+        ctl_close(s);
+        return;
+    }
+#ifdef _WIN32
+    u_long nb = 1;
+    ioctlsocket(s, FIONBIO, &nb);
+    /* stop a reply to a remote that has gone away from breaking the next read */
+    BOOL off = FALSE;
+    DWORD got = 0;
+    WSAIoctl(s, SIO_UDP_CONNRESET, &off, sizeof off, NULL, 0, &got, NULL, NULL);
+#else
+    fcntl(s, F_SETFL, fcntl(s, F_GETFL, 0) | O_NONBLOCK);
+#endif
+    g_ctl = s;
+    printf("Control channel on 127.0.0.1:%d\n", port);
+}
+
+/* append to a buffer, never overflowing it */
+typedef struct { char *b; size_t n, cap; } Buf;
+static void bput(Buf *o, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void bput(Buf *o, const char *fmt, ...)
+{
+    if (o->n >= o->cap) return;
+    va_list ap;
+    va_start(ap, fmt);
+    int w = vsnprintf(o->b + o->n, o->cap - o->n, fmt, ap);
+    va_end(ap);
+    if (w > 0) o->n += (size_t)w < o->cap - o->n ? (size_t)w : o->cap - o->n - 1;
+}
+static void bstr(Buf *o, const char *s)
+{
+    bput(o, "\"");
+    for (; s && *s; s++) {
+        if (*s == '"' || *s == '\\') bput(o, "\\%c", *s);
+        else if ((unsigned char)*s < 32) bput(o, " ");
+        else bput(o, "%c", *s);
+    }
+    bput(o, "\"");
+}
+
+static void ctl_state(Buf *o, int mode, int paused)
+{
+    int grp = mode < 0 ? 0 : mode + 1;
+    bput(o, "{\"scene\":%d,\"name\":", mode);
+    bstr(o, mode == -2 ? "LENS GRID" : mode == -1 ? "GLOBE GRID" : g_scenes[mode]->name);
+    bput(o, ",\"keys\":");
+    bstr(o, mode >= 0 && g_scenes[mode]->keys_help ? g_scenes[mode]->keys_help : "");
+    bput(o, ",\"paused\":%d,\"fps\":%.1f", paused, g_fps);
+    struct stat st;
+    long feed = stat(dome_path("data/sats.txt"), &st) == 0 ? (long)(time(NULL) - st.st_mtime) : -1;
+    bput(o, ",\"feed_age\":%ld,\"scenes\":[", feed);
+    for (int i = 0; i < g_nscenes; i++) { if (i) bput(o, ","); bstr(o, g_scenes[i]->name); }
+    bput(o, "],\"params\":[");
+    for (int i = 0; i < g_group_n[grp]; i++) {
+        Param *p = g_group[grp][i];
+        if (i) bput(o, ",");
+        bput(o, "{\"name\":");
+        bstr(o, p->name);
+        bput(o, ",\"group\":\"%s\",\"value\":%g,\"lo\":%g,\"hi\":%g,\"step\":%g,\"hint\":",
+             grp == 0 ? "calibration" : i < N_VIEW ? "view" : "scene",
+             *p->v, p->lo, p->hi, p->step);
+        bstr(o, p->hint);
+        bput(o, "}");
+    }
+    bput(o, "]}");
+}
+
+static SDL_Keycode ctl_keycode(const char *k)
+{
+    if (!strcmp(k, "space")) return SDLK_SPACE;
+    if (!strcmp(k, "up"))    return SDLK_UP;
+    if (!strcmp(k, "down"))  return SDLK_DOWN;
+    if (!strcmp(k, "left"))  return SDLK_LEFT;
+    if (!strcmp(k, "right")) return SDLK_RIGHT;
+    if (!strcmp(k, "tab"))   return SDLK_TAB;
+    if (strlen(k) == 1) {
+        char c = k[0];
+        if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == ',' || c == '.')
+            return (SDL_Keycode)c;
+    }
+    return 0;
+}
+
+static void ctl_poll(int mode, int paused)
+{
+    if (g_ctl == CTL_NONE) return;
+    char in[256];
+    struct sockaddr_in from;
+    socklen_t fl = sizeof from;
+    int n;
+    while ((n = (int)recvfrom(g_ctl, in, (int)sizeof in - 1, 0, (struct sockaddr *)&from, &fl)) > 0) {
+        in[n] = 0;
+        in[strcspn(in, "\r\n")] = 0;
+        static char out[32768];
+        Buf o = { out, 0, sizeof out };
+        char a[64] = "", b[64] = "";
+        int args = sscanf(in, "%*s %63s %63s", a, b);
+        if (!strncmp(in, "state", 5)) {
+            ctl_state(&o, mode, paused);
+        } else if (!strncmp(in, "scene ", 6) && args >= 1) {
+            int m = atoi(a);
+            if (m >= -2 && m < g_nscenes) { g_ctl_mode = m; bput(&o, "ok"); }
+            else bput(&o, "error: no scene %d", m);
+        } else if (!strncmp(in, "key ", 4) && args >= 1) {
+            SDL_Keycode k = ctl_keycode(a);
+            if (k) { push_key(k, 0); bput(&o, "ok"); }
+            else bput(&o, "error: unknown key %s", a);
+        } else if (!strncmp(in, "set ", 4) && args >= 2) {
+            int grp = mode < 0 ? 0 : mode + 1, done = 0;
+            for (int i = 0; i < g_group_n[grp] && !done; i++) {
+                Param *p = g_group[grp][i];
+                if (strcmp(p->name, a)) continue;
+                float v = (float)atof(b);
+                *p->v = v < p->lo ? p->lo : v > p->hi ? p->hi : v;
+                if (p->regen && mode >= 0 && g_scenes[mode]->rebuild) g_scenes[mode]->rebuild();
+                done = 1;
+            }
+            if (done) bput(&o, "ok"); else bput(&o, "error: no setting %s here", a);
+        } else if (!strncmp(in, "save", 4)) {
+            config_save();
+            bput(&o, "ok");
+        } else {
+            bput(&o, "error: unknown command");
+        }
+        sendto(g_ctl, out, (int)o.n, 0, (struct sockaddr *)&from, fl);
+        fl = sizeof from;
+    }
 }
 
 /* ================================================================== */
@@ -895,11 +1129,22 @@ int dome_run(int argc, char **argv, const char *title,
     if (nscenes > 16) nscenes = 16;
     g_scenes = scenes; g_nscenes = nscenes;
 
+#ifdef _WIN32
+    (void)argv;
+    char *base = SDL_GetBasePath();         /* folder of hemisphere.exe */
+    if (base) {
+        size_t bl = strlen(base);
+        if (bl && (base[bl - 1] == '\\' || base[bl - 1] == '/')) base[bl - 1] = '\0';
+        snprintf(g_dir, sizeof g_dir, "%s", base);
+        SDL_free(base);
+    }
+#else
     char resolved[PATH_MAX];
     if (realpath(argv[0], resolved)) {
         char *slash = strrchr(resolved, '/');
         if (slash) { *slash = '\0'; snprintf(g_dir, sizeof g_dir, "%s", resolved); }
     }
+#endif
 
     /* defaults are whatever the variables hold before any file is read */
     g_cal = CALIB_DEFAULT;
@@ -910,23 +1155,74 @@ int dome_run(int argc, char **argv, const char *title,
     config_load();
     tty_init();
 
+    /* stay full screen when you click on another monitor */
+    SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
+#ifdef _WIN32
+    /* real pixels on scaled (125%, 150%...) Windows displays */
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+#endif
     if (SDL_Init(SDL_INIT_VIDEO) < 0) { fprintf(stderr, "SDL: %s\n", SDL_GetError()); return 1; }
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 
-    SDL_DisplayMode dm = { 0 };
-    if (SDL_GetDesktopDisplayMode(0, &dm) != 0) { dm.w = 640; dm.h = 480; }
-    SDL_Window *win = SDL_CreateWindow(title,
-        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, dm.w, dm.h,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
-    if (!win) { fprintf(stderr, "Window: %s\n", SDL_GetError()); return 1; }
-    SDL_GLContext ctx = SDL_GL_CreateContext(win);
-    if (!ctx) { fprintf(stderr, "GL context: %s\n", SDL_GetError()); return 1; }
+    int ndisp = SDL_GetNumVideoDisplays();
+    if (ndisp < 1) ndisp = 1;
+    int cur_disp = (int)lroundf(g_view.display);
+    if (cur_disp >= ndisp) cur_disp = 0;    /* the loop below says so */
+
+    /* OpenGL ES 2.0 first (the Pi; most Windows drivers); desktop OpenGL
+     * 2.1 if the driver will not give an ES context */
+    SDL_Window *win = NULL;
+    SDL_GLContext ctx = NULL;
+    int first = 0;
+#ifdef _WIN32
+    const char *want = getenv("DOME_GL");
+    if (want && !strcmp(want, "desktop")) first = 1;
+#endif
+    for (int attempt = first; attempt < 2 && !ctx; attempt++) {
+        SDL_GL_ResetAttributes();
+        if (attempt == 0) {
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        } else {
+#ifndef _WIN32
+            break;                     /* the Pi only has OpenGL ES */
+#endif
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+        }
+        SDL_DisplayMode dm = { 0 };
+        if (SDL_GetDesktopDisplayMode(cur_disp, &dm) != 0) { dm.w = 640; dm.h = 480; }
+        win = SDL_CreateWindow(title,
+            SDL_WINDOWPOS_CENTERED_DISPLAY(cur_disp), SDL_WINDOWPOS_CENTERED_DISPLAY(cur_disp),
+            dm.w, dm.h, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
+        if (!win) {
+            fprintf(stderr, "%s window not available: %s\n",
+                    attempt == 0 ? "OpenGL ES 2.0" : "OpenGL 2.1", SDL_GetError());
+            continue;
+        }
+        ctx = SDL_GL_CreateContext(win);
+        if (!ctx) {
+            fprintf(stderr, "%s context not available: %s\n",
+                    attempt == 0 ? "OpenGL ES 2.0" : "OpenGL 2.1", SDL_GetError());
+            SDL_DestroyWindow(win);
+            win = NULL;
+        } else {
+            g_desktop_gl = attempt == 1;
+        }
+    }
+    if (!ctx) { fprintf(stderr, "No usable OpenGL context\n"); return 1; }
+    if (!dome_gl_load()) { fprintf(stderr, "The graphics driver is missing OpenGL functions\n"); return 1; }
+    if (g_desktop_gl) {
+        glEnable(0x8642);              /* GL_VERTEX_PROGRAM_POINT_SIZE */
+        glEnable(0x8861);              /* GL_POINT_SPRITE, for round dots */
+    }
     SDL_GL_SetSwapInterval(1);
     SDL_ShowCursor(SDL_DISABLE);
     SDL_GL_GetDrawableSize(win, &g_view_w, &g_view_h);
-    printf("Screen: %dx%d  GL: %s / %s\n", g_view_w, g_view_h, glGetString(GL_VERSION), glGetString(GL_RENDERER));
+    printf("Screen %d of %d: %dx%d  GL: %s / %s%s\n", cur_disp, ndisp, g_view_w, g_view_h,
+           glGetString(GL_VERSION), glGetString(GL_RENDERER),
+           g_desktop_gl ? " (desktop fallback)" : "");
 
     g_point_prog = dome_compile(POINT_VS, POINT_FS);
     surface_init();
@@ -934,15 +1230,19 @@ int dome_run(int argc, char **argv, const char *title,
     dome_points_init(&g_globe_grid, 40000);
     grids_build();
     for (int i = 0; i < nscenes; i++) if (scenes[i]->init) scenes[i]->init();
+    ctl_init();
 
     /* mode: -2 lens grid, -1 globe grid, 0..n-1 scenes. Start on the
      * first scene; calibration is a one-off job. */
     int running = 1, paused = 0, mode = 0, grid_spin = 0, overlay = 0;
+    Uint32 disp_check_ms = 0;
+    int disp_warned = -1;
     int sel[17] = { 0 };
     float spin = 0;
     Uint32 start_ms = SDL_GetTicks();
     float last_t = 0;
     int frames = 0; float fps_t = 0;
+    int frames2 = 0; float fps2_t = 0;
 
 #define GROUP() (mode < 0 ? 0 : mode + 1)
 
@@ -953,7 +1253,50 @@ int dome_run(int argc, char **argv, const char *title,
     printf("Mode: %s\n", mode >= 0 ? scenes[mode]->name : "CALIBRATION GRID");
 
     while (running && !g_quit) {
+        /* keep the window on the display the setting asks for. If that
+         * display is missing (unplugged, or the PC is in Remote Desktop) use
+         * the main one meanwhile, and go back when it returns; the setting
+         * itself is kept. Checked twice a second. */
+        if (SDL_GetTicks() - disp_check_ms > 500) {
+            disp_check_ms = SDL_GetTicks();
+            int want = (int)lroundf(g_view.display);
+            int nd = SDL_GetNumVideoDisplays();
+            int target = want < nd ? want : 0;
+            if (want >= nd && want != disp_warned) {
+                printf("Display %d is not connected, using the main one for now\n", want);
+                disp_warned = want;
+            }
+            if (want < nd) disp_warned = -1;
+            int actual = SDL_GetWindowDisplayIndex(win);
+            if (actual >= 0 && actual != target) {
+                SDL_SetWindowFullscreen(win, 0);
+                SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED_DISPLAY(target),
+                                      SDL_WINDOWPOS_CENTERED_DISPLAY(target));
+                SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN_DESKTOP);
+                printf("Moved to display %d\n", target);
+            }
+            cur_disp = target;
+            fflush(stdout);
+        }
+        {   /* new screen size (moved, or the resolution changed): re-fit */
+            int w, h;
+            SDL_GL_GetDrawableSize(win, &w, &h);
+            if (w != g_view_w || h != g_view_h) {
+                g_view_w = w; g_view_h = h;
+                g_map_res = -1;
+                printf("Screen: %dx%d\n", w, h);
+            }
+        }
         poll_tty();
+        ctl_poll(mode, paused);
+        if (g_ctl_mode != -99) {
+            mode = g_ctl_mode;
+            g_ctl_mode = -99;
+            printf("Mode: %s\n", mode == -2 ? "LENS GRID (adjusting CALIBRATION)"
+                               : mode == -1 ? "GLOBE GRID (adjusting CALIBRATION)"
+                               : scenes[mode]->name);
+            fflush(stdout);
+        }
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             if (ev.type == SDL_QUIT) running = 0;
@@ -994,6 +1337,12 @@ int dome_run(int argc, char **argv, const char *title,
             case SDLK_t:
                 grid_spin = !grid_spin;
                 printf("Grid spin %s\n", grid_spin ? "on" : "off"); break;
+            case SDLK_v: {
+                int nd = SDL_GetNumVideoDisplays();
+                g_view.display = (float)((cur_disp + 1) % (nd > 0 ? nd : 1));
+                if (nd < 2) printf("Only one display connected\n");
+                break;
+            }
             case SDLK_o:
                 overlay = !overlay;
                 printf("Globe grid overlay %s\n", overlay ? "on" : "off"); break;
@@ -1091,6 +1440,8 @@ int dome_run(int argc, char **argv, const char *title,
         SDL_GL_SwapWindow(win);
 
         frames++;
+        frames2++;
+        if (now - fps2_t >= 2.0f) { g_fps = frames2 / (now - fps2_t); frames2 = 0; fps2_t = now; }
         if (now - fps_t >= 10.0f) {
             if (getenv("DOME_FPS")) printf("%.1f fps\n", frames / (now - fps_t));
             frames = 0; fps_t = now;

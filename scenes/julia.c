@@ -17,7 +17,7 @@
 #include <stdio.h>
 
 static struct { float theme, set, edge, speed, iter, zoom, hue, bands, glow; } L =
-    { 0.0f, 0.0f, 0.99f, 1.0f, 64.0f, 1.0f, 0.0f, 1.0f, 1.0f };
+    { 0.0f, 0.0f, 0.99f, 1.0f, 32.0f, 1.0f, 0.0f, 1.0f, 1.0f };
 
 static Param P[] = {
     { "theme",  &L.theme,  1.0f, 0.0f, 7.0f, 0,

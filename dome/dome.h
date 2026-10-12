@@ -3,7 +3,9 @@
  *
  * The core owns everything that is the same for every project: the window,
  * the lens calibration (calibration.cfg), the calibration grids, settings
- * files, keyboard and SSH-terminal input, spin and orientation. A project
+ * files, keyboard and SSH-terminal input, spin and orientation. It builds
+ * on the Raspberry Pi (OpenGL ES 2.0) and on Windows (the same functions
+ * from the PC's graphics driver); scenes are the same files on both. A project
  * supplies one or more Scenes and a tiny main.c that lists them.
  *
  * A scene can draw in two ways, and usually uses both:
@@ -38,7 +40,7 @@
 #define DOME_H
 
 #include <SDL2/SDL.h>
-#include <GLES2/gl2.h>
+#include "glload.h"          /* OpenGL ES 2.0, on the Pi and on Windows */
 
 #define DOME_PI        3.14159265358979f
 #define DEG2RAD(d)     ((d) * DOME_PI / 180.0f)

@@ -34,7 +34,7 @@
 #include <time.h>
 
 static struct { float view, home_lat, home_lon, sats, quakes, lights, text, band, bright; } L =
-    { 0.0f, 51.44f, 0.15f, 1.0f, 1.0f, 1.2f, 1.0f, 0.65f, 1.0f };
+    { 0.0f, 51.48f, 0.0f, 1.0f, 1.0f, 1.2f, 1.0f, 0.65f, 1.0f };
 
 static Param P[] = {
     { "view",     &L.view,     1.0f,   0.0f, 2.0f, 0,

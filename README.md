@@ -1,12 +1,40 @@
 # Hemisphere: a framework for the Gakken World Eye
 
-Drives the Gakken World Eye spherical display from a Raspberry Pi 3. The
-screen is a 180 degree dome lit from inside through a fisheye lens. The
+Drives the Gakken World Eye spherical display from a Raspberry Pi 3, or
+from a Windows PC (see [Windows PC](#windows-pc)). The screen is a 180
+degree dome lit from inside through a fisheye lens. The
 core here owns the lens calibration and everything else that is the same
 for every project, so a new visual is just a **scene**: a page or two of C
 and GLSL.
 
-Ten scenes come with it:
+## Why I built this
+
+The Gakken World Eye is an interesting product, and surprisingly little has
+been made for it. I wanted to drive mine from a Raspberry Pi 3 with my own
+visuals, starting with a Death Star. I chose the Pi 3 on purpose to
+optimise for cheap hardware (and I had one lying around).
+
+The first version didn't work. It rendered the model with a normal camera
+and then fisheye-warped the image, leaving a small flat picture in the
+middle of the dome. No tuning could fix that; the approach was wrong. From
+photos of the real globe, I worked out the geometry and mapped every point
+straight onto the dome through a model of the lens. I built a calibration
+grid and settings to measure and tune the physical device. A strip of paper
+on the globe was the test equipment.
+
+With the calibration right, I realised a framework others could use would
+be worth more than one Death Star, so I separated the two. Any new visual
+became a small scene file. At the time of writing it has eleven scenes
+(maybe more by now), live satellite and earthquake data, and a web remote.
+
+It reflects how I work: reproduce the problem on the real hardware, find
+the root cause rather than tuning around it, test against measurements, and
+write it up (see [Debugging notes](#debugging-notes)).
+
+I built it with AI-assisted tooling (Claude Code). I directed the work,
+tested every change on the real display, and did the calibration myself.
+
+Eleven scenes come with it:
 
 | Key | Scene | What it shows |
 |-----|-------|---------------|
@@ -18,8 +46,9 @@ Ten scenes come with it:
 | 6 | Game of Life | Life on a globe with no edges, under three sets of rules and in eight colour themes. Fresh soup drops in whenever it settles down |
 | 7 | Moon tonight | The Moon filling the dome, lit to tonight's real phase, with its age and the next full and new moon written across the equator. No internet needed |
 | 8 | Orbit watch | The live Earth with real day and night, the ISS and its next orbit, a few hundred satellites, and the last day's earthquakes |
-| 9 | Groovy | 60s and 70s patterns: op art, psychedelic swirl, 70s wallpaper, flower power, lava lamp, spirograph, mirror ball, liquid light |
+| 9 | Groovy | 60s and 70s patterns: op art, psychedelic swirl, 70s wallpaper, flower power, lava lamp, mood ring, mirror ball, liquid light, glam stars |
 | 0 | Sci-fi | Hologram globe, radar sweep (with real satellites if the orbit feed is running), hyperspace, planet scan, reactor core, ship's computer |
+| , and . | Groovy Baby | Smileys and flower power: bouncing smileys, daisy chain, flower wallpaper, blooming garden, sunshine face, peace and petals, smiley rain, flower kaleidoscope, rainbow face, hippie bus |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -34,7 +63,7 @@ See the [gallery](#gallery) for each scene on the globe.
 | ![Death Star](docs/screenshots/deathstar.jpg)<br>Death Star | ![Planet](docs/screenshots/planet.jpg)<br>Planet | ![Plasma](docs/screenshots/plasma.jpg)<br>Plasma |
 | ![Julia](docs/screenshots/julia.jpg)<br>Julia | ![Kaleidoscope](docs/screenshots/kaleido.jpg)<br>Kaleidoscope | ![Game of Life](docs/screenshots/life.jpg)<br>Game of Life |
 | ![Moon tonight](docs/screenshots/moon.jpg)<br>Moon tonight | ![Orbit watch](docs/screenshots/orbit.jpg)<br>Orbit watch | ![Groovy](docs/screenshots/groovy.jpg)<br>Groovy |
-| ![Sci-fi](docs/screenshots/scifi.jpg)<br>Sci-fi | ![Calibration grid](docs/screenshots/calibration.jpg)<br>Lens grid | |
+| ![Sci-fi](docs/screenshots/scifi.jpg)<br>Sci-fi | ![Groovy Baby](docs/screenshots/groovybaby.jpg)<br>Groovy Baby | ![Calibration grid](docs/screenshots/calibration.jpg)<br>Lens grid |
 
 Photos of the real globe, taken in a dark room with the phone's exposure
 turned down a little so the colours don't burn out.
@@ -47,6 +76,7 @@ hemisphere/
   Makefile
   dome/dome.h              the framework API (read this first)
   dome/dome.c              window, calibration, lens maths, settings, input
+  dome/glload.h, glload.c  OpenGL ES functions on Windows (nothing to do on the Pi)
   dome/shaders.h           GLSL shared by every scene
   dome/text.c              dot-matrix text on the dome
   dome/font5x7.h           the font (X11 misc-fixed 5x7, public domain)
@@ -55,13 +85,18 @@ hemisphere/
   scenes/plasma.c          3   scenes/orbit.c    8
   scenes/julia.c           4   scenes/groovy.c   9
   scenes/kaleido.c         5   scenes/scifi.c    0
+  scenes/groovybaby.c      , and . (the eleventh scene)
   third_party/stb_image.h  JPEG/PNG loader (public domain, single header)
   textures/                planet and moon maps go here
   data/                    live data from the orbit feed (created by it)
   tools/prep_textures.py   resizes maps for the Pi
   tools/orbitfeed.py       live satellite and earthquake data
   tools/orbitfeed.service  runs the feed at boot
+  tools/remote/app.py      the web remote (Flask) and its API
+  tools/remote/static/     the remote's page
+  tools/remote/remote.service  runs the remote at boot
   tools/requirements.txt   Python packages for the tools
+  tools/windows/           start-up scripts for a Windows PC
   deploy.sh                copy to the Pi and build (Git Bash, WSL or Linux)
   docs/screenshots/        photos for the gallery
   calibration.cfg          calibration (my World Eye)
@@ -85,8 +120,10 @@ scene fades in over two seconds.
 
 ### Copying from Windows
 
-From PowerShell in the `hemisphere` folder, copy the code across (this
-leaves the settings you have saved on the Pi alone):
+The examples here use `pi@raspberrypi.local` and `/home/pi`; put your own
+Pi's user and address in their place. From PowerShell in the `hemisphere`
+folder, copy the code across (this leaves the settings you have saved on
+the Pi alone):
 
 ```powershell
 scp main.c Makefile README.md pi@raspberrypi.local:~/hemisphere/
@@ -99,7 +136,8 @@ then on the Pi: `pkill hemisphere; cd ~/hemisphere && make && DISPLAY=:0 ./hemis
 The first time, copy the whole folder instead (`scp -r hemisphere
 pi@raspberrypi.local:~/`). From Git Bash, WSL or Linux, `./deploy.sh` does
 all of this in one go, and only copies settings files the Pi doesn't
-already have.
+already have. Tell it where your Pi is:
+`PI=me@my-pi DEST=/home/me/hemisphere ./deploy.sh`.
 
 Run it in the foreground in your SSH session while adjusting anything. It
 prints each setting as you change it, and you can press keys right there in
@@ -198,6 +236,7 @@ Settings are kept in files next to the program, in groups:
 | `orbit.cfg` | Orbit watch | Orbit watch (8) | View, home, what to show |
 | `groovy.cfg` | Groovy | Groovy (9) | Style, speed, scale |
 | `scifi.cfg` | Sci-fi | Sci-fi (0) | Style, speed, scale, radar range and centre |
+| `groovybaby.cfg` | Groovy Baby | Groovy Baby (, and .) | Style, colours, speed, scale, wink |
 
 In a scene, TAB steps through the six view settings first (`pitch`,
 `tilt`, `wobble`, `rev_secs`, `res`, `view_dist`) and then that scene's
@@ -224,9 +263,10 @@ install on the Pi, copy the two old files into `/home/pi/hemisphere`.
 | `rev_secs` | Seconds per full turn |
 | `res` | Colour resolution across the dome: lower is faster, higher is sharper |
 | `view_dist` | How far away you stand, in globe radii. Sets how strongly recesses such as the dish show depth |
+| `display` | Which screen the World Eye is on: 0 is the main one. Only matters on a PC with more than one screen (V steps through them) |
 
 The Moon, and the text in the Moon and orbit watch, follow `pitch` and
-`tilt` but never spin. The lava lamp, spirograph, radar, hyperspace and ship's computer
+`tilt` but never spin. The lava lamp, the sunshine face, smiley rain and rainbow face, radar, hyperspace and ship's computer
 are drawn square to the dome, ignoring the view settings.
 
 **Death Star settings:**
@@ -259,7 +299,7 @@ theme.
 
 **Julia settings:** `theme`, `set` (0 Julia, 1 Mandelbrot; **M** switches),
 `edge` (under 1 gives solid shapes, over 1 lacy dust), `speed`, `iter`
-(detail; more is slower), `zoom`, `hue`, `bands` (how fast the colours
+(detail; more is slower, 32 to start), `zoom`, `hue`, `bands` (how fast the colours
 cycle), `glow` (brightness inside the set). Infinity sits at the north
 pole, so the top of the globe is the dark outside of the set. The
 Mandelbrot set is the map of every Julia set: it stays still while the
@@ -303,14 +343,24 @@ clear. The ISS is the bright pulsing marker, with its next orbit
 in dashed cyan ahead of it and a short white trail behind. Satellites are
 coloured by type: yellow space stations, white bright satellites, green GPS,
 blue weather satellites. Earthquakes pulse as rings, yellow under M4, orange
-to M6, red above; the last six hours are brighter. Home is set to Bexley;
-change `home_lat` and `home_lon` for elsewhere.
+to M6, red above; the last six hours are brighter. Home starts at Greenwich;
+set `home_lat` and `home_lon` to your own location.
 
 **Groovy settings:** `style` (**N** steps through them: 0 op art, 1
-psychedelic swirl, 2 70s wallpaper, 3 flower power, 4 lava lamp, 5 spirograph,
-6 mirror ball, 7 liquid light), `speed`, `scale` (bigger gives a finer pattern), `bright`.
-The patterns turn with the globe, except the lava lamp and spirograph,
-which stay facing you.
+psychedelic swirl, 2 70s wallpaper, 3 flower power, 4 lava lamp, 5 mood ring,
+6 mirror ball, 7 liquid light, 8 glam stars), `speed`, `scale` (bigger gives a
+finer pattern), `bright`. The patterns turn with the globe, except the lava
+lamp, which stays facing you.
+
+**Groovy Baby settings:** `style` (**N** steps through them: 0 smiley
+bounce, 1 daisy chain, 2 flower wallpaper, 3 blooming garden, 4 sunshine
+face, 5 peace and petals, 6 smiley rain, 7 flower kaleidoscope, 8 rainbow
+face, 9 hippie bus), `theme` (**M**: 0 each style's own colours, 1 to 8 the
+shared themes), `speed`, `scale` (bigger gives more, smaller shapes),
+`bright`, `wink` (how often the smileys wink and blink; 0 stops it). It
+has no number key: press `,` or `.` to reach it, or pick it on the web
+remote. The sunshine face, smiley rain and rainbow face stay facing you; the
+rest turn with the globe.
 
 **Sci-fi settings:** `style` (**N** steps through them: 0 hologram globe,
 1 radar sweep, 2 hyperspace, 3 planet scan, 4 reactor core, 5 ship's
@@ -319,8 +369,8 @@ computer), `speed`, `scale`, `range` (radar range in km), `home_lat` and
 The radar shows the real satellites passing within range of home when
 `orbitfeed` is running (north up, east right), and simulated contacts
 otherwise, and says so. Hyperspace runs a 24-second loop: cruise, spool
-up, jump, then drop back to normal space. The radar's home is Bexley, like
-orbit watch's, set separately here.
+up, jump, then drop back to normal space. The radar's home starts at
+Greenwich, like orbit watch's; set yours here too.
 
 ## Live data for orbit watch
 
@@ -348,8 +398,201 @@ journalctl -u orbitfeed -f                    # watch what it is doing
 ```
 
 The service file assumes the program lives in `/home/pi/hemisphere` and
-runs as `mark`; edit it if yours differs. `--once` updates everything once
+runs as `pi`; edit `User=` and the paths to match your Pi. `--once` updates everything once
 and exits, which is handy for checking the network.
+
+## Web remote
+
+A phone-friendly remote control page, so you don't need a keyboard or SSH:
+scene buttons, the N, M and C keys, pause, faster and slower, save, and a
+slider for every setting of the scene you're on. Numbered choices show
+their names (`theme 1 · fire`). It also shows the frame rate and whether
+the orbit feed is live.
+
+```bash
+cd ~/hemisphere
+venv/bin/pip install -r tools/requirements.txt     # adds Flask
+venv/bin/python3 tools/remote/app.py               # try it: Ctrl+C to stop
+```
+
+Then open `http://raspberrypi.local:5000` on your phone. To run it at boot:
+
+```bash
+sudo cp tools/remote/remote.service /etc/systemd/system/hemisphere-remote.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now hemisphere-remote
+```
+
+**How it works.** Hemisphere listens for commands on `127.0.0.1:5005`
+(UDP), which only programs on the Pi itself can reach. The Flask app serves
+the page on port 5000 and passes commands through. Anyone on your home
+network can open the page and there's no login, so keep port 5000 off the
+internet. `DOME_CTL_PORT` changes the port (0 turns it off).
+
+**API**, for scripts or Home Assistant:
+
+| Call | Body | Does |
+|------|------|------|
+| `GET /api/state` | | Current scene, its settings with ranges and hints, fps, orbit feed age |
+| `POST /api/scene` | `{"scene": 2}` | Switch scene, counting from 0 (-2 lens grid, -1 globe grid) |
+| `POST /api/key` | `{"key": "n"}` | Press a key: letters, digits, `,` `.`, `space`, `up`, `down` |
+| `POST /api/setting` | `{"name": "speed", "value": 2.5}` | Set a setting of the current scene or view |
+| `POST /api/save` | | Save all settings files, like pressing S |
+
+For example: `curl -X POST -H 'Content-Type: application/json' -d '{"scene":6}' http://raspberrypi.local:5000/api/scene`
+switches to the Moon.
+
+## Running on its own
+
+Once it's set up you don't need an SSH session open. Hemisphere starts with
+the Pi's desktop (it needs the screen, which a background service can't
+easily get), and the orbit feed and web remote run as services. After a
+reboot all three come back by themselves. The examples use the `pi` user
+and `/home/pi`; put your own in their place.
+
+**The web remote and orbit feed as services.** The service files in
+`tools/` assume `User=pi` and `/home/pi/hemisphere`. If yours differ, this
+installs a copy with your user and folder filled in:
+
+```bash
+cd ~/hemisphere
+for s in tools/remote/remote.service:hemisphere-remote tools/orbitfeed.service:orbitfeed; do
+  sudo sh -c "sed 's#/home/pi/#$HOME/#g; s#User=pi#User=$USER#' ${s%%:*} > /etc/systemd/system/${s##*:}.service"
+done
+sudo systemctl daemon-reload
+sudo systemctl enable --now hemisphere-remote orbitfeed
+systemctl status hemisphere-remote orbitfeed --no-pager
+```
+
+**Hemisphere with the desktop.** Raspberry Pi OS's labwc desktop runs the
+commands in `~/.config/labwc/autostart` when it logs in. Check what's
+already there, then add Hemisphere:
+
+```bash
+cat ~/.config/labwc/autostart 2>/dev/null
+mkdir -p ~/.config/labwc
+echo "sh -c \"sleep 5; cd $HOME/hemisphere && DISPLAY=:0 ./hemisphere > /tmp/hemisphere.log 2>&1\" &" >> ~/.config/labwc/autostart
+```
+
+The Pi needs to log in to the desktop by itself at boot (`sudo raspi-config`,
+System Options, Boot / Auto Login, Desktop Autologin).
+
+**Start it now without rebooting**, so it keeps running after you close
+the SSH session:
+
+```bash
+cd ~/hemisphere && DISPLAY=:0 nohup ./hemisphere > /tmp/hemisphere.log 2>&1 &
+```
+
+**Living with it:**
+
+* Keys typed over SSH only reach Hemisphere when you started it in that
+  SSH session. Running on its own, use the web remote instead. For a long
+  keyboard session, such as calibrating, run `pkill hemisphere` and start
+  it in the foreground in SSH as before.
+* `cat /tmp/hemisphere.log` shows what Hemisphere printed, if something
+  seems wrong.
+* To stop it starting at boot, delete its line from
+  `~/.config/labwc/autostart`; for the services, `sudo systemctl disable
+  --now hemisphere-remote orbitfeed`.
+* If another program on the Pi already uses port 5000 (`sudo ss -tlnp`
+  shows it), run the remote on another port: add
+  `Environment=REMOTE_PORT=5001` under `[Service]` in its service file,
+  then `sudo systemctl daemon-reload` and restart it.
+
+## Windows PC
+
+The same code runs on a Windows 10 or 11 PC, scenes and all. Windows has no
+OpenGL ES library, but NVIDIA, Intel and AMD drivers offer the same
+functions, so the core fetches them from the driver at start-up
+(`dome/glload.c`) and nothing above it changes. If a driver will not give
+an OpenGL ES context, Hemisphere falls back to desktop OpenGL 2.1 and
+adjusts the shaders to suit; the start-up line says `(desktop fallback)`
+when that happens. It needs a real graphics driver, not the "Microsoft
+Basic Display Adapter".
+
+A PC has far more graphics power than a Pi 3, so turn things up: `res`
+1024 or more for a sharper dome, and Julia's `iter` back to 128. Settings
+files are per machine, so this doesn't touch the Pi's.
+
+### Build
+
+Install [MSYS2](https://www.msys2.org), open the **MSYS2 UCRT64** terminal
+from the Start menu, then:
+
+```bash
+pacman -S --needed make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-SDL2
+cd /d/portfolio/hemisphere          # your copy of the repo
+make
+./hemisphere.exe
+```
+
+`make` builds `hemisphere.exe` and copies `SDL2.dll` next to it. Those two
+files are all it needs, so the folder can be copied to another PC without
+MSYS2. Press **ESC** in the dome window, or Ctrl+C in the terminal, to quit.
+
+For the orbit feed and web remote, make the Python venv from PowerShell in
+the repo folder:
+
+```powershell
+py -m venv venv
+venv\Scripts\pip install -r tools\requirements.txt
+```
+
+### The World Eye as a second screen
+
+Plug the World Eye into a spare HDMI output and set Windows to **Extend
+these displays** (Settings, System, Display). Hemisphere opens full screen
+on display 0, the main one. Press **V** until it moves onto the World Eye,
+then **S** to save; the choice is the `display` view setting, also on the
+web remote. Clicking on your other screen doesn't minimise the dome.
+
+Check the calibration on the lens grid (**G**) the first time. The
+calibration is in fractions of the screen, so it carries over from the Pi
+if the World Eye gets the same resolution, but a different HDMI mode moves
+things slightly.
+
+With the dome on a second screen, keys only reach Hemisphere when its
+window has focus, so the [web remote](#web-remote) is the easy way to
+drive it. The terminal key reader the Pi uses over SSH isn't on Windows.
+
+### Running on its own
+
+`tools\windows\start-hemisphere.ps1` is the Windows counterpart of the
+Pi's services: it starts Hemisphere with its window hidden, plus the orbit
+feed and web remote from the venv, restarts any that stop, and writes logs
+to `logs\`. ESC on the dome stops the lot. To start it at sign-in, run once
+from an administrator PowerShell in the repo folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\windows\install-autostart.ps1
+```
+
+That adds a scheduled task, **Hemisphere**, and a firewall rule letting
+phones on your home network reach the web remote on port 5000 (Private
+networks only; `-Port 5050` if you changed `REMOTE_PORT`, `-Remove` to undo
+it). Then open `http://<pc-name>:5000` on your phone.
+
+For a PC that comes back by itself after a power cut:
+
+* **Sign in automatically.** The dome needs a signed-in desktop. Microsoft's
+  free [Autologon](https://learn.microsoft.com/sysinternals/downloads/autologon)
+  tool sets this up and stores the password encrypted.
+* **Never sleep or blank the screen.** Settings, System, Power: set screen
+  and sleep to **Never**, and turn off any screen saver.
+
+### Remote Desktop
+
+Don't start Hemisphere from a Remote Desktop session. A program started
+under RDP draws to the remote screen, not the PC's HDMI outputs, so the
+dome stays dark. Closing RDP the normal way also locks the session, which
+blanks the dome until someone signs in at the PC.
+
+If you do RDP in for admin, leave by running `tools\windows\rdp-to-console.bat`
+as administrator instead of closing the window. It hands your session back
+to the PC's own screens, still signed in, and the dome carries on. Remote
+tools that share the real screen, such as VNC or Chrome Remote Desktop,
+don't have this problem.
 
 ## Controls
 
@@ -363,6 +606,7 @@ and exits, which is handy for checking the network.
 | TAB / Shift+TAB | Next / previous setting in the current group |
 | LEFT / RIGHT | Adjust the selected setting (hold Shift for fine steps) |
 | O | Draw the globe grid over the current scene |
+| V | Move to the next screen (a PC with the World Eye as a second display) |
 | X | Mirror left/right |
 | T | Spin the current grid on/off |
 | S or F5 | Save all settings files |
@@ -371,8 +615,8 @@ and exits, which is handy for checking the network.
 | P / H | Print all settings / the key list |
 | SPACE | Pause rotation |
 | UP / DOWN | Faster / slower rotation |
-| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (groovy, sci-fi), map (planet) or view (orbit watch). Death Star: denser dots |
-| M | Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: sparser dots |
+| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (groovy, sci-fi, Groovy Baby), map (planet) or view (orbit watch). Death Star: denser dots |
+| M | Groovy Baby: next colours. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: sparser dots |
 | C | Life: reseed |
 | I / K | Death Star: dish shallower / deeper |
 | ESC | Quit |
@@ -480,9 +724,12 @@ These environment variables are for testing and previewing:
 * **Calibrating from a PC.** The program window only sees the Pi's own
   keyboard, so keys typed in the SSH window are read separately and fed in
   as the same key presses.
-* **Slow scenes.** Liquid light and the reactor core were too slow on the
-  Pi 3 because they stacked noise for every pixel. Both now use sine
-  waves. If another style stutters, lower `res`, or rebuild its pattern
+* **Slow scenes.** Liquid light, the reactor core, the hologram globe and
+  the planet scan were too slow on the Pi 3 because they stacked noise for
+  every pixel. All four now use sine waves. Julia's `iter` now starts at
+  32 rather than 64, and the Death Star's motion trail is one faint copy
+  rather than two. Groovy Baby's styles are each a separate small shader,
+  so only the one on screen costs anything. If another style stutters, lower `res`, or rebuild its pattern
   from sine waves the same way.
 * **The original two-pass design.** Version one filmed the model with a
   normal camera and fisheye-warped the picture. A camera only sees the
@@ -490,6 +737,16 @@ These environment variables are for testing and previewing:
   dome. Mapping every point straight onto the dome fixed it, and the
   surface lookup texture uses the same idea for colour.
 
-Built with AI-assisted tooling (Claude Code).
+## Credits
 
-Solar System Scope textures are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+* Planet and Moon maps: [Solar System Scope](https://www.solarsystemscope.com/textures/),
+  licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+* Image loading: [stb_image](https://github.com/nothings/stb) by Sean
+  Barrett, public domain.
+* Dot-matrix font: the X11 misc-fixed 5x7 font, public domain.
+* Moon phases: Jean Meeus, "Astronomical Algorithms".
+* Satellite orbits from [CelesTrak](https://celestrak.org), worked out
+  with the [sgp4](https://pypi.org/project/sgp4/) library; earthquakes from
+  the [USGS](https://earthquake.usgs.gov).
+
+Built with AI-assisted tooling (Claude Code).

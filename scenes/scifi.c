@@ -30,7 +30,7 @@ static const char *NAMES[NSTYLE] = {
 };
 
 static struct { float style, speed, scale, range, home_lat, home_lon, text, bright; } L =
-    { 0.0f, 1.0f, 1.0f, 2500.0f, 51.44f, 0.15f, 1.0f, 1.0f };
+    { 0.0f, 1.0f, 1.0f, 2500.0f, 51.48f, 0.0f, 1.0f, 1.0f };
 
 static Param P[] = {
     { "style",    &L.style,    1.0f,  0.0f, 5.0f, 0,
@@ -46,15 +46,27 @@ static Param P[] = {
 
 #define U "uniform float u_t, u_scale, u_bright, u_a, u_b;\n"
 
-/* ---- 0: hologram globe ---- */
+/* A cheap stand-in for layered noise: a few sine waves, each bent by
+ * another. Smooth hills and coastlines at a fraction of fbm's cost. */
+#define TERRAIN \
+    "float terr(vec3 p){\n" \
+    "  p += 0.35 * sin(p.yzx * 2.3 + 1.0);\n" \
+    "  float a = sin(p.x * 1.7 + sin(p.y * 1.3)) + sin(p.y * 2.1 + sin(p.z * 1.1) + 1.0)\n" \
+    "          + sin(p.z * 1.9 + sin(p.x * 1.5) + 2.0);\n" \
+    "  float b = sin(p.x * 4.3 + p.y * 3.1) + sin(p.y * 4.7 - p.z * 3.7) + sin(p.z * 5.3 + p.x * 2.9);\n" \
+    "  float c = sin(p.x * 11.3 + p.z * 7.9) + sin(p.y * 12.7 - p.x * 8.3) + sin(p.z * 13.1 + p.y * 9.7);\n" \
+    "  return 0.5 + 0.12 * a + 0.05 * b + 0.022 * c;\n" \
+    "}\n"
+
+/* ---- 0: hologram globe (u_b = flicker, worked out once per frame) ---- */
 static const char HOLO[] =
-    U
+    U TERRAIN
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
     "  float gy = abs(fract(lat / PI * 12.0 + 0.5) - 0.5);\n"
     "  float gx = abs(fract(lon / PI * 12.0 + 0.5) - 0.5) * max(cos(lat), 0.15);\n"
     "  float grid = max(smoothstep(0.03, 0.0, gy), smoothstep(0.03, 0.0, gx));\n"
-    "  float h = fbm(dir * 2.2 * u_scale);\n"
+    "  float h = terr(dir * 2.6 * u_scale);\n"
     "  float coast = smoothstep(0.022, 0.0, abs(h - 0.52));\n"
     "  float land = smoothstep(0.515, 0.53, h);\n"
     "  float I = grid * 0.40 + coast * 1.0 + land * 0.10;\n"
@@ -62,7 +74,7 @@ static const char HOLO[] =
     "  float sy = 1.0 - fract(u_t * 0.12) * 2.2;\n"
     "  float band = exp(-pow((view.y - sy) * 7.0, 2.0));\n"
     "  I += band * (0.20 + coast * 0.8);\n"
-    "  I *= 0.88 + 0.12 * n3(vec3(u_t * 14.0, 0.0, 0.0));\n"            /* flicker */
+    "  I *= u_b;\n"                                                        /* flicker */
     "  float a = acos(clamp(view.z, -1.0, 1.0)), th = atan(view.y, view.x);\n"
     "  float r1 = smoothstep(0.008, 0.0, abs(a - 1.05)) * step(0.45, fract(th * 3.0 / PI + u_t * 0.15));\n"
     "  float r2 = smoothstep(0.006, 0.0, abs(a - 1.22)) * step(0.6, fract(th * 36.0 / 6.283 - u_t * 0.05));\n"
@@ -123,9 +135,9 @@ static const char WARP[] =
 
 /* ---- 3: planet scan ---- */
 static const char SCAN[] =
-    U
+    U TERRAIN
     "vec4 surface(vec3 dir, vec3 view){\n"
-    "  float h = fbm(dir * 2.0 * u_scale + 3.0);\n"
+    "  float h = terr(dir * 2.4 * u_scale + 3.0);\n"
     "  vec3 base = mix(vec3(0.10, 0.03, 0.18), vec3(0.06, 0.32, 0.32), smoothstep(0.35, 0.65, h));\n"
     "  base = mix(base, vec3(0.55, 0.30, 0.12), smoothstep(0.62, 0.72, h));\n"
     "  float line = smoothstep(0.43, 0.49, abs(fract(h * 14.0) - 0.5));\n"
@@ -381,6 +393,7 @@ static void draw(const DomeFrame *f)
     if (s == 1) ua = g_sweep;
     if (s == 2) { ua = g_warp; ub = g_flash; ut = g_travel; }
     if (s == 5) { ua = 0.55f + 0.35f * sinf(g_t * 0.4f); ub = 0.5f + 0.4f * sinf(g_t * 0.27f + 1.0f); }
+    if (s == 0) ub = 0.88f + 0.12f * (0.5f + 0.5f * sinf(g_t * 37.0f) * sinf(g_t * 23.0f + 1.0f));
 
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), ut);

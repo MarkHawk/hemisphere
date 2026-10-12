@@ -6,29 +6,29 @@
  *   2 70s wallpaper  interlocking circles and wavy stripes, scrolling
  *   3 flower power   pop-colour daisies opening and closing in waves
  *   4 lava lamp      glowing wax blobs rising, merging and splitting
- *   5 spirograph     looping patterns drawn line by line on cream paper
+ *   5 mood ring      the globe drifts through mood ring colours, glassy
  *   6 mirror ball    a disco ball of glinting tiles under coloured lights
  *   7 liquid light   swirling coloured oils, like a 60s light show
+ *   8 glam stars     silver and pink star flares and glitter, glam rock
  *
- * The patterns on the ball turn with it; the lava lamp and spirograph
- * stay put, facing you.
+ * The patterns on the ball turn with it; the lava lamp stays put, facing
+ * you.
  */
 #include "../dome/dome.h"
 #include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 
-#define NSTYLE 8
+#define NSTYLE 9
 static const char *NAMES[NSTYLE] = {
     "op art", "psychedelic swirl", "70s wallpaper", "flower power",
-    "lava lamp", "spirograph", "mirror ball", "liquid light"
+    "lava lamp", "mood ring", "mirror ball", "liquid light", "glam stars"
 };
 
 static struct { float style, speed, scale, bright; } L = { 0.0f, 1.0f, 1.0f, 1.0f };
 
 static Param P[] = {
-    { "style",  &L.style,  1.0f, 0.0f, 7.0f, 0,
-      "0 op art, 1 swirl, 2 wallpaper, 3 flowers, 4 lava lamp, 5 spirograph, 6 mirror ball, 7 liquid light (N)" },
+    { "style",  &L.style,  1.0f, 0.0f, 8.0f, 0,
+      "0 op art, 1 swirl, 2 wallpaper, 3 flowers, 4 lava lamp, 5 mood ring, 6 mirror ball, 7 liquid light, 8 glam stars (N)" },
     { "speed",  &L.speed,  0.1f, 0.0f, 4.0f, 0, "speed of the animation" },
     { "scale",  &L.scale,  0.05f, 0.4f, 2.5f, 0, "size of the pattern (bigger = finer)" },
     { "bright", &L.bright, 0.05f, 0.2f, 2.0f, 0, "brightness" },
@@ -180,14 +180,32 @@ static const char LAVA[] =
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 5: spirograph paper (the lines are dots, drawn on top) ---- */
-static const char PAPER[] =
+/* ---- 5: mood ring: the whole globe drifts slowly through the colours of
+ * a mood ring, warmer and cooler patches wandering across it like heat,
+ * under a glassy sheen. A few sines per pixel. ---- */
+static const char MOOD[] =
     U
+    "vec3 ring(float x){\n"
+    "  x = fract(x) * 5.0;\n"
+    "  vec3 a = vec3(1.00, 0.62, 0.05), b = vec3(0.20, 0.90, 0.35), c = vec3(0.05, 0.85, 0.85),\n"
+    "       d = vec3(0.15, 0.35, 1.00), e = vec3(0.75, 0.20, 1.00);\n"   /* amber, green, turquoise, blue, violet */
+    "  float f = smoothstep(0.25, 0.75, fract(x));\n"
+    "  if (x < 1.0) return mix(a, b, f);\n"
+    "  if (x < 2.0) return mix(b, c, f);\n"
+    "  if (x < 3.0) return mix(c, d, f);\n"
+    "  if (x < 4.0) return mix(d, e, f);\n"
+    "  return mix(e, a, f);\n"
+    "}\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
-    "  float a = acos(clamp(view.z, -1.0, 1.0));\n"
-    "  vec3 c = vec3(0.96, 0.92, 0.82) * (0.94 + 0.06 * n3(view * 60.0));\n"
-    "  c *= 1.0 - 0.25 * smoothstep(1.0, 1.55, a);\n"
-    "  return vec4(c * u_bright, 1.0);\n"
+    "  vec3 p = dir * 1.6 * u_scale;\n"
+    "  float w = sin(p.x * 1.7 + sin(p.y * 2.3 + u_t * 0.21) + u_t * 0.13)\n"
+    "          + sin(p.z * 1.9 + sin(p.x * 1.5 - u_t * 0.17) - u_t * 0.11);\n"
+    "  float x = u_t * 0.025 + w * 0.16;\n"
+    "  vec3 col = ring(x);\n"
+    "  col *= 0.70 + 0.30 * pow(max(view.z, 0.0), 0.6);\n"               /* deep at the edge */
+    "  col += ring(x + 0.2) * pow(1.0 - max(view.z, 0.0), 3.0) * 0.25;\n" /* coloured rim */
+    "  col += vec3(1.0) * pow(max(dot(view, normalize(vec3(-0.35, 0.45, 0.82))), 0.0), 60.0) * 0.55;\n"
+    "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
 /* ---- 6: mirror ball ---- */
@@ -223,73 +241,50 @@ static const char MIRROR[] =
     "  return vec4(c * u_bright, 1.0);\n"
     "}\n";
 
-static const char *GLSL[NSTYLE] = { OPART, SWIRL, WALLPAPER, FLOWERS, LAVA, PAPER, MIRROR, LIQUID };
+/* ---- 8: glam stars: four-point star flares that brighten and fade at
+ * their own pace, silver and pink, on plum satin with glitter dust ---- */
+static const char GLAM[] =
+    U
+    "vec2 rot2(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }\n"
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
+    /* rows of roughly square cells, fewer towards the poles */
+    "  float rows = floor(6.0 * u_scale + 0.5);\n"
+    "  float rf = (lat / PI + 0.5) * rows, row = floor(rf);\n"
+    "  float latc = ((row + 0.5) / rows - 0.5) * PI;\n"
+    "  float n = max(1.0, floor(rows * 2.0 * cos(latc) + 0.5));\n"
+    "  float cf = (lon / (2.0 * PI) + 0.5) * n, cl = floor(cf);\n"
+    "  vec2 q = vec2((fract(cf) - 0.5) * 2.0 * rows * cos(lat) / n, fract(rf) - 0.5);\n"
+    "  float h = h3(vec3(row, cl, 5.0)), h2 = h3(vec3(row, cl, 6.0));\n"
+    "  vec3 col = mix(vec3(0.07, 0.0, 0.10), vec3(0.22, 0.02, 0.20),\n"
+    "                 0.5 + 0.5 * sin(lat * 3.0 + lon + u_t * 0.3));\n"
+    "  vec3 g = floor(dir * 140.0);\n"                                  /* glitter dust */
+    "  col += mix(vec3(1.0, 0.4, 0.8), vec3(0.9, 0.9, 1.0), h3(g))\n"
+    "         * step(0.982, h3(g + floor(u_t * 7.0)));\n"
+    "  if (h > 0.33) {\n"
+    "    vec2 s = q - (vec2(h, h2) - 0.5) * 0.15;\n"
+    "    s = rot2(s, h2 * 6.0 + u_t * 0.15 * (h - 0.6));\n"
+    "    float tw = pow(0.5 + 0.5 * sin(u_t * (1.0 + 2.0 * h2) + h * 40.0), 3.0);\n"
+    "    float size = 0.5 + 0.5 * h2;\n"
+    "    vec2 a = abs(s) / size;\n"
+    "    float arms = exp(-a.y * 28.0) * max(0.0, 1.0 - a.x * 2.4) + exp(-a.x * 28.0) * max(0.0, 1.0 - a.y * 2.4);\n"
+    "    vec2 d = abs(rot2(s, 0.7854)) / size;\n"
+    "    arms += 0.6 * (exp(-d.y * 40.0) * max(0.0, 1.0 - d.x * 4.0) + exp(-d.x * 40.0) * max(0.0, 1.0 - d.y * 4.0));\n"
+    "    float core = exp(-dot(s, s) / (size * size) * 90.0);\n"
+    "    vec3 sc = mix(vec3(0.85, 0.88, 1.0), vec3(1.0, 0.35, 0.75), step(0.6, h2));\n"
+    "    col += sc * (arms * (0.5 + 1.2 * tw) + core * 0.6 * (0.4 + tw)) + vec3(1.0) * core * (0.4 + 1.2 * tw);\n"
+    "  }\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+static const char *GLSL[NSTYLE] = { OPART, SWIRL, WALLPAPER, FLOWERS, LAVA, MOOD, MIRROR, LIQUID, GLAM };
 static GLuint g_prog[NSTYLE];
 static float  g_t;
-
-/* ---------------------------------------------------------------- */
-/* Spirograph                                                        */
-/* ---------------------------------------------------------------- */
-#define NCURVE 3
-typedef struct { int R, r; float d, age, scale, rot; float col[3]; } Curve;
-static Curve      g_cv[NCURVE];
-static DomePoints g_ink;
-
-static int gcd(int a, int b) { while (b) { int t = a % b; a = b; b = t; } return a; }
-
-static void curve_new(Curve *c, float age)
-{
-    static const float INK[5][3] = {
-        { 0.85f, 0.20f, 0.15f }, { 0.10f, 0.35f, 0.75f }, { 0.10f, 0.55f, 0.30f },
-        { 0.90f, 0.50f, 0.05f }, { 0.45f, 0.20f, 0.60f },
-    };
-    do {
-        c->R = 7 + rand() % 7;
-        c->r = 2 + rand() % (c->R - 3);
-    } while (gcd(c->R, c->r) == c->r);
-    c->d = c->r * (0.4f + 0.9f * (float)rand() / RAND_MAX);
-    c->age = age;
-    float ext = (float)(c->R - c->r) + c->d;
-    c->scale = (0.55f + 0.6f * (float)rand() / RAND_MAX) / ext;
-    c->rot = (float)rand() / RAND_MAX * 6.2832f;
-    const float *k = INK[rand() % 5];
-    c->col[0] = k[0]; c->col[1] = k[1]; c->col[2] = k[2];
-}
-
-static void spiro_build(float dt)
-{
-    const float DRAW = 14.0f, HOLD = 5.0f, FADE = 3.0f;
-    dome_points_clear(&g_ink);
-    for (int i = 0; i < NCURVE; i++) {
-        Curve *c = &g_cv[i];
-        c->age += dt * L.speed;
-        if (c->age > DRAW + HOLD + FADE) curve_new(c, 0.0f);
-        float prog = fminf(c->age / DRAW, 1.0f);
-        float alpha = c->age < DRAW + HOLD ? 1.0f : 1.0f - (c->age - DRAW - HOLD) / FADE;
-        int turns = c->r / gcd(c->R, c->r);
-        int n = (int)(1400 * turns * prog);
-        float tmax = 6.2832f * turns * prog;
-        float k = (float)(c->R - c->r) / c->r;
-        for (int j = 0; j <= n; j++) {
-            float t = tmax * j / (n > 0 ? n : 1);
-            float x = (c->R - c->r) * cosf(t) + c->d * cosf(k * t);
-            float y = (c->R - c->r) * sinf(t) - c->d * sinf(k * t);
-            float cr = cosf(c->rot), sr = sinf(c->rot);
-            float ex = (x * cr - y * sr) * c->scale, ey = (x * sr + y * cr) * c->scale;
-            float a = sqrtf(ex * ex + ey * ey), th = atan2f(ey, ex), s = sinf(a);
-            dome_points_push(&g_ink, s * cosf(th), s * sinf(th), cosf(a),
-                             c->col[0], c->col[1], c->col[2], alpha * 0.9f);
-        }
-    }
-    dome_points_upload(&g_ink);
-}
 
 /* ---------------------------------------------------------------- */
 static void init(void)
 {
     for (int i = 0; i < NSTYLE; i++) g_prog[i] = dome_surface_program_lib(DOME_GLSL_NOISE, GLSL[i]);
-    dome_points_init(&g_ink, NCURVE * 1400 * 13 + 16);
-    for (int i = 0; i < NCURVE; i++) curve_new(&g_cv[i], -6.0f * i);
 }
 
 static int style(void)
@@ -309,11 +304,6 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     dome_surface_end();
-    if (s == 5) {
-        spiro_build(f->dt);
-        mat3 still; m3_identity(still);
-        dome_draw_points(&g_ink, still, f->fade, 3.0f);
-    }
 }
 
 static int key(SDL_Keycode k, int shift)
