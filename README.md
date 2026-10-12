@@ -1,5 +1,9 @@
 # Hemisphere: a framework for the Gakken World Eye
 
+https://github.com/user-attachments/assets/eac9f6f6-ce7c-4442-ab63-b2b5ab97cd12
+
+
+
 Drives the Gakken World Eye spherical display from a Raspberry Pi 3, or
 from a Windows PC (see [Windows PC](#windows-pc)). The screen is a 180
 degree dome lit from inside through a fisheye lens. The
