@@ -7,24 +7,30 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
 
 ## Layout
 
-- `main.c`: entry point, scene switching
+- `main.c`: entry point, scene switching. The 15 scenes, in `main.c` order:
+  deathstar, planet, plasma, julia, kaleido, life, moon, orbit, groovy, scifi,
+  groovy2, hypno, balls, retro, seasons. The first ten are on number keys 1 to
+  9 and 0; the rest are on `,` and `.` and the web remote. The framework
+  allows up to 16 scenes.
 - `dome/`: the framework: lens mapping and calibration (`dome.c`, `dome.h`),
-  shaders (`shaders.h`), text rendering (`text.c`, `font5x7.h`)
-- `scenes/`: one file per scene (deathstar, planet, plasma, julia, kaleido, life,
-  moon, orbit, groovy, scifi, eye, storms)
+  the GL loader for Windows (`glload.c`, `glload.h`), shaders (`shaders.h`),
+  text rendering (`text.c`, `font5x7.h`)
+- `scenes/`: one file per scene (see the list above)
 - `calibration.cfg`: how this WorldEye's lens fits the dome (device settings)
 - `deathstar.cfg`: look settings for the Death Star scene
 - `textures/`: planet maps from Solar System Scope (CC BY 4.0, credited in README)
 - `third_party/stb_image.h`: image loading (public domain / MIT)
-- `tools/`: `orbitfeed.py` + `orbitfeed.service` (Python, venv), `prep_textures.py`
+- `tools/`: `orbitfeed.py` + `orbitfeed.service` (Python, venv), `prep_textures.py`,
+  `remote/` (a Flask web remote on port 5000, talking to the UDP control channel
+  on 127.0.0.1:5005), `windows/` (start-up and autostart scripts)
+- `docs/screenshots/`: gallery photos used in the README
 - `deploy.sh`: copies the project to the Pi
 
 ## Build and deploy
 
-- Built on the Pi with `make`; the program is `hemisphere`.
-- Every scene file must be listed in the Makefile's `SRC`. `scenes/eye.c` and
-  `scenes/storms.c` are currently not listed: either add them or mark them as work
-  in progress in the README.
+- Built with `make`. On the Pi (or any Linux), the program is `hemisphere`. On
+  Windows, in an MSYS2 UCRT64 terminal, the same `make` command builds
+  `hemisphere.exe` and copies `SDL2.dll` alongside it.
 - To deploy, pass your Pi's details: `PI=user@your-pi DEST=/home/user/hemisphere ./deploy.sh`.
   Committed files keep the generic defaults (`pi@raspberrypi.local`, `/home/pi`).
 
@@ -38,3 +44,6 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
 - Commit in small steps. Never push: I push.
 - C for rendering, Python (venv) for tools, Bash for scripts. State the language per
   new file and wait for my OK before writing it.
+- A new scene needs its file listed in `main.c` and the Makefile's `SRC`, a row
+  in the README's settings table, and a gallery photo. Keep each scene quick on
+  a Pi 3: check with `DOME_FPS=1`.
