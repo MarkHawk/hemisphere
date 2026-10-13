@@ -27,7 +27,8 @@ SRC = main.c dome/dome.c dome/glload.c dome/text.c \
       scenes/deathstar.c scenes/planet.c scenes/plasma.c \
       scenes/julia.c scenes/kaleido.c scenes/life.c \
       scenes/moon.c scenes/orbit.c scenes/groovy.c \
-      scenes/scifi.c scenes/groovybaby.c
+      scenes/scifi.c scenes/groovy2.c \
+      scenes/hypno.c scenes/balls.c scenes/retro.c scenes/seasons.c
 OBJ = $(SRC:.c=.o)
 
 $(EXE): $(OBJ)
@@ -44,7 +45,8 @@ dome/glload.o: dome/glload.c dome/glload.h
 dome/text.o: dome/text.c $(HDR) dome/font5x7.h
 main.o scenes/deathstar.o scenes/plasma.o scenes/julia.o \
 scenes/kaleido.o scenes/life.o scenes/moon.o scenes/orbit.o \
-scenes/groovy.o scenes/scifi.o scenes/groovybaby.o: $(HDR)
+scenes/groovy.o scenes/scifi.o scenes/groovy2.o \
+scenes/hypno.o scenes/balls.o scenes/retro.o scenes/seasons.o: $(HDR)
 scenes/planet.o: scenes/planet.c $(HDR) third_party/stb_image.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-function -c -o $@ $<
 

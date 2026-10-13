@@ -2,8 +2,6 @@
 
 https://github.com/user-attachments/assets/eac9f6f6-ce7c-4442-ab63-b2b5ab97cd12
 
-
-
 Drives the Gakken WorldEye spherical display from a Raspberry Pi 3, or
 from a Windows PC (see [Windows PC](#windows-pc)). The screen is a 180
 degree dome lit from inside through a fisheye lens. The
@@ -38,7 +36,8 @@ write it up (see [Debugging notes](#debugging-notes)).
 I built it with AI-assisted tooling (Claude Code). I directed the work,
 tested every change on the real display, and did the calibration myself.
 
-Eleven scenes come with it:
+Fifteen scenes come with it. The first ten are on the number keys; the
+rest are on `,` and `.` and the web remote.
 
 | Key | Scene | What it shows |
 |-----|-------|---------------|
@@ -52,7 +51,11 @@ Eleven scenes come with it:
 | 8 | Orbit watch | The live Earth with real day and night, the ISS and its next orbit, a few hundred satellites, and the last day's earthquakes |
 | 9 | Groovy | 60s and 70s patterns: op art, psychedelic swirl, 70s wallpaper, flower power, lava lamp, mood ring, mirror ball, liquid light, glam stars |
 | 0 | Sci-fi | Hologram globe, radar sweep (with real satellites if the orbit feed is running), hyperspace, planet scan, reactor core, ship's computer |
-| , and . | Groovy Baby | Smileys and flower power: bouncing smileys, daisy chain, flower wallpaper, blooming garden, sunshine face, peace and petals, smiley rain, flower kaleidoscope, rainbow face, hippie bus |
+| , and . | Groovy 2 | Smileys and flower power: bouncing smileys, daisy chain, flower wallpaper, blooming garden, sunshine face, peace and petals, smiley rain, flower kaleidoscope, rainbow face, hippie bus |
+| , and . | Hypnotic | Tesseract, quasicrystal, moire, Fibonacci globe, Truchet maze, hypno spiral, tunnel, pendulum, breathing hexagons, geodesic sphere |
+| , and . | Sports balls | The globe as a ball, rolling: football, basketball, tennis, cricket, baseball, volleyball, golf, pool 8-ball, beach ball, bowling ball |
+| , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, starfield, pixel planet, Rim Pong, Rim defender, radial falling blocks, 16-colour plasma, tape loading, pixel fire. The three games play themselves across the whole dome |
+| , and . | Seasons | Fireworks, Christmas bauble, snowfall, fairy lights, pumpkin, spooky night, Easter egg, spring blossom, New Year countdown, autumn leaves. Can pick the style from today's date |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -67,7 +70,9 @@ See the [gallery](#gallery) for each scene on the globe.
 | ![Death Star](docs/screenshots/deathstar.jpg)<br>Death Star | ![Planet](docs/screenshots/planet.jpg)<br>Planet | ![Plasma](docs/screenshots/plasma.jpg)<br>Plasma |
 | ![Julia](docs/screenshots/julia.jpg)<br>Julia | ![Kaleidoscope](docs/screenshots/kaleido.jpg)<br>Kaleidoscope | ![Game of Life](docs/screenshots/life.jpg)<br>Game of Life |
 | ![Moon tonight](docs/screenshots/moon.jpg)<br>Moon tonight | ![Orbit watch](docs/screenshots/orbit.jpg)<br>Orbit watch | ![Groovy](docs/screenshots/groovy.jpg)<br>Groovy |
-| ![Sci-fi](docs/screenshots/scifi.jpg)<br>Sci-fi | ![Groovy Baby](docs/screenshots/groovybaby.jpg)<br>Groovy Baby | ![Calibration grid](docs/screenshots/calibration.jpg)<br>Lens grid |
+| ![Sci-fi](docs/screenshots/scifi.jpg)<br>Sci-fi | ![Groovy 2](docs/screenshots/groovy2.jpg)<br>Groovy 2 | ![Hypnotic](docs/screenshots/hypno.jpg)<br>Hypnotic |
+| ![Sports balls](docs/screenshots/balls.jpg)<br>Sports balls | ![8-bit retro](docs/screenshots/retro.jpg)<br>8-bit retro | ![Seasons](docs/screenshots/seasons.jpg)<br>Seasons |
+| ![Calibration grid](docs/screenshots/calibration.jpg)<br>Lens grid | | |
 
 Photos of the real globe, taken in a dark room with the phone's exposure
 turned down a little so the colours don't burn out.
@@ -89,7 +94,8 @@ hemisphere/
   scenes/plasma.c          3   scenes/orbit.c    8
   scenes/julia.c           4   scenes/groovy.c   9
   scenes/kaleido.c         5   scenes/scifi.c    0
-  scenes/groovybaby.c      , and . (the eleventh scene)
+  scenes/groovy2.c         the rest are on , and .:
+  scenes/hypno.c, balls.c, retro.c, seasons.c
   third_party/stb_image.h  JPEG/PNG loader (public domain, single header)
   textures/                planet and moon maps go here
   data/                    live data from the orbit feed (created by it)
@@ -240,7 +246,11 @@ Settings are kept in files next to the program, in groups:
 | `orbit.cfg` | Orbit watch | Orbit watch (8) | View, home, what to show |
 | `groovy.cfg` | Groovy | Groovy (9) | Style, speed, scale |
 | `scifi.cfg` | Sci-fi | Sci-fi (0) | Style, speed, scale, radar range and centre |
-| `groovybaby.cfg` | Groovy Baby | Groovy Baby (, and .) | Style, colours, speed, scale, wink |
+| `groovy2.cfg` | Groovy 2 | Groovy 2 (, and .) | Style, colours, speed, scale, wink |
+| `hypno.cfg` | Hypnotic | Hypnotic (, and .) | Style, colours, speed, scale |
+| `balls.cfg` | Sports balls | Sports balls (, and .) | Ball, roll, shine |
+| `retro.cfg` | 8-bit retro | 8-bit retro (, and .) | Style, speed, pixel size, pixel gaps |
+| `seasons.cfg` | Seasons | Seasons (, and .) | Style, auto by date, speed, scale |
 
 In a scene, TAB steps through the six view settings first (`pitch`,
 `tilt`, `wobble`, `rev_secs`, `res`, `view_dist`) and then that scene's
@@ -356,7 +366,7 @@ psychedelic swirl, 2 70s wallpaper, 3 flower power, 4 lava lamp, 5 mood ring,
 finer pattern), `bright`. The patterns turn with the globe, except the lava
 lamp, which stays facing you.
 
-**Groovy Baby settings:** `style` (**N** steps through them: 0 smiley
+**Groovy 2 settings:** `style` (**N** steps through them: 0 smiley
 bounce, 1 daisy chain, 2 flower wallpaper, 3 blooming garden, 4 sunshine
 face, 5 peace and petals, 6 smiley rain, 7 flower kaleidoscope, 8 rainbow
 face, 9 hippie bus), `theme` (**M**: 0 each style's own colours, 1 to 8 the
@@ -364,7 +374,54 @@ shared themes), `speed`, `scale` (bigger gives more, smaller shapes),
 `bright`, `wink` (how often the smileys wink and blink; 0 stops it). It
 has no number key: press `,` or `.` to reach it, or pick it on the web
 remote. The sunshine face, smiley rain and rainbow face stay facing you; the
-rest turn with the globe.
+rest turn with the globe. (Earlier versions called it Groovy Baby; its saved
+`groovybaby.cfg` is still read if `groovy2.cfg` is missing.)
+
+**Hypnotic settings:** `style` (**N**: 0 tesseract, 1 quasicrystal, 2 moire,
+3 Fibonacci globe, 4 Truchet maze, 5 hypno spiral, 6 tunnel, 7 pendulum, 8
+breathing hexagons, 9 geodesic sphere), `theme` (**M**: 0 each style's own
+colours, 1 to 8 the shared themes), `speed`, `scale`, `bright`. The tesseract
+is a 4D cube turned through the fourth dimension and projected twice; the
+quasicrystal is five plane waves at 36 degree steps, a pattern that never
+repeats. The Fibonacci globe spreads 610 seeds evenly over the sphere, each
+a golden angle round from the last, which forms crossing spirals of 21 and
+34. The pendulum traces rosettes over the whole globe, and the geodesic
+sphere has a coarser one turning the other way inside it, drawn recessed
+so it shows depth. The moire, Fibonacci globe, pendulum and geodesic turn
+with the globe; the rest face you.
+
+**Sports balls settings:** `style` (**N**: 0 football, 1 basketball, 2
+tennis, 3 cricket, 4 baseball, 5 volleyball, 6 golf, 7 pool 8-ball, 8 beach
+ball, 9 bowling ball), `roll` (tumbling end over end on top of the spin),
+`bright`, `shine` (the highlight). The football is the real solid, a
+truncated icosahedron: every point belongs to whichever face plane it
+reaches first. The tennis and baseball seams follow the curve where height
+equals x squared minus y squared.
+
+**8-bit retro settings:** `style` (**N**: 0 digital rain, 1 copper bars, 2
+starfield, 3 pixel planet, 4 Rim Pong, 5 Rim defender, 6 radial blocks, 7
+16-colour plasma, 8 tape loading, 9 pixel fire), `speed`, `scale` (pixel
+size), `bright`, `grid` (show the gaps between pixels). The three games use
+the whole dome, with the rim as the edge of play, and each is played by a
+small robot in C. In Rim Pong two bats circle the rim, each guarding half
+of it. In Rim defender the ship circles the rim with rapid fire, shooting
+inwards at aliens that spiral out from a hive at the centre in groups and
+fire back. The ship explodes if it is hit or an alien reaches the rim
+beside it; there are three lives, a score and high score, and waves that
+get faster, with GAME OVER and a fresh game when the lives run out. Its
+robot leads its shots and dodges incoming fire. Radial blocks is a falling-block game on rings: pieces
+fall inwards towards the centre and a full ring clears. Its robot tries
+every sector and turn for each piece and picks the flattest result. The
+aliens, ship and pictures are made up for this program.
+
+**Seasons settings:** `style` (**N**: 0 fireworks, 1 Christmas bauble, 2
+snowfall, 3 fairy lights, 4 pumpkin, 5 spooky night, 6 Easter egg, 7 spring
+blossom, 8 New Year countdown, 9 autumn leaves), `auto` (1 picks the style
+from today's date; pressing N turns it off), `speed`, `scale`, `bright`.
+With `auto` on it shows fireworks in early November, the pumpkin and spooky
+night in Halloween week, Christmas styles in December, the countdown on 31
+December and 1 January, snow in January and February, blossom and Easter
+in spring, and leaves in autumn.
 
 **Sci-fi settings:** `style` (**N** steps through them: 0 hologram globe,
 1 radar sweep, 2 hyperspace, 3 planet scan, 4 reactor core, 5 ship's
@@ -619,8 +676,8 @@ don't have this problem.
 | P / H | Print all settings / the key list |
 | SPACE | Pause rotation |
 | UP / DOWN | Faster / slower rotation |
-| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (groovy, sci-fi, Groovy Baby), map (planet) or view (orbit watch). Death Star: denser dots |
-| M | Groovy Baby: next colours. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: sparser dots |
+| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (groovy, sci-fi, Groovy 2, Hypnotic, Sports balls, 8-bit retro, Seasons), map (planet) or view (orbit watch). Death Star: denser dots |
+| M | Groovy 2 and Hypnotic: next colours. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: sparser dots |
 | C | Life: reseed |
 | I / K | Death Star: dish shallower / deeper |
 | ESC | Quit |
@@ -732,7 +789,7 @@ These environment variables are for testing and previewing:
   the planet scan were too slow on the Pi 3 because they stacked noise for
   every pixel. All four now use sine waves. Julia's `iter` now starts at
   32 rather than 64, and the Death Star's motion trail is one faint copy
-  rather than two. Groovy Baby's styles are each a separate small shader,
+  rather than two. Groovy 2's styles are each a separate small shader,
   so only the one on screen costs anything. If another style stutters, lower `res`, or rebuild its pattern
   from sine waves the same way.
 * **The original two-pass design.** Version one filmed the model with a

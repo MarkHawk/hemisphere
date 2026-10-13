@@ -15,7 +15,11 @@ The main README shows these, one per scene. Save each as a JPEG, roughly
 | orbit.jpg | 8 Orbit watch | With the feed running and the ISS in view |
 | groovy.jpg | 9 Groovy | Flower power or liquid light |
 | scifi.jpg | 0 Sci-fi | Hologram or ship's computer |
-| groovybaby.jpg | Groovy Baby (, and .) | Smiley bounce or sunshine face |
+| groovy2.jpg | Groovy 2 (, and .) | Smiley bounce or sunshine face |
+| hypno.jpg | Hypnotic (, and .) | Geodesic sphere or Fibonacci globe |
+| balls.jpg | Sports balls (, and .) | Football, with the pentagons facing you |
+| retro.jpg | 8-bit retro (, and .) | Pixel planet or copper bars |
+| seasons.jpg | Seasons (, and .) | Pumpkin or fireworks |
 | calibration.jpg | G Lens grid | Shows the calibration at work |
 
 Photograph the real globe rather than saving the screen: the Pi's own
