@@ -11,8 +11,8 @@
  *   3 planet scan      an alien world with contour lines, swept by a
  *                      scanning beam
  *   4 reactor core     a pulsing energy ball with crawling electric arcs
- *   5 ship's computer  concentric rings of ticks, gauges and numbers
- *                      turning at different speeds
+ *   5 ship's computer  concentric rings of ticks, gauges and hex readouts
+ *                      turning at different speeds, out to the rim
  *
  * All original designs, not copies of any film or show's screens.
  */
@@ -203,6 +203,10 @@ static const char COMP[] =
     "         * step(0.2, fract(fract(u + u_t * 0.015) * 40.0));\n"
     "  col += red * band(a, 1.12, 1.15) * step(0.92, fract((u - u_t * 0.04) * 8.0));\n"
     "  col += amber * 0.5 * smoothstep(0.004, 0.0, abs(a - 1.2));\n"
+    /* out to the rim: a ruled line and a ring of ticks */
+    "  col += teal * 0.45 * smoothstep(0.004, 0.0, abs(a - 1.415));\n"
+    "  col += teal * 0.8 * band(a, 1.52, 1.56) * step(0.7, fract((u + u_t * 0.008) * 180.0));\n"
+    "  col += amber * band(a, 1.50, 1.565) * step(0.95, fract((u + u_t * 0.008) * 18.0));\n"
     "  col += amber * smoothstep(0.03, 0.0, a) * (0.6 + 0.4 * sin(u_t * 3.0));\n"
     "  col += amber * 0.6 * (smoothstep(0.003, 0.0, abs(view.x)) + smoothstep(0.003, 0.0, abs(view.y)))\n"
     "         * band(a, 0.06, 0.15);\n"
@@ -212,8 +216,9 @@ static const char COMP[] =
 static const char *GLSL[NSTYLE] = { HOLO, RADAR, WARP, SCAN, CORE, COMP };
 static GLuint g_prog[NSTYLE];
 static float  g_t, g_sweep, g_travel, g_warp, g_flash, g_cycle;
-static DomePoints g_txt[2], g_blip;
-static float  g_txt_rot[2];
+#define NTXT 5
+static DomePoints g_txt[NTXT], g_blip;
+static float  g_txt_rot[NTXT];
 static time_t g_txt_built;
 
 static int style(void)
@@ -315,7 +320,7 @@ static int ring_chars(float radius_deg, float height_deg)
 static void build_text(int s, int contacts)
 {
     char a[160], b[160];
-    for (int i = 0; i < 2; i++) dome_points_clear(&g_txt[i]);
+    for (int i = 0; i < NTXT; i++) dome_points_clear(&g_txt[i]);
     switch (s) {
     case 0:
         snprintf(a, sizeof a, "SCAN %02d%%   SECTOR %c-%d   LOCK %s", rand() % 100,
@@ -337,16 +342,22 @@ static void build_text(int s, int contacts)
         dome_text_arc(&g_txt[0], b, 80.0f, 90.0f, 3.2f, 0.4f, 1.0f, 0.9f, 0.9f);
         break;
     case 5: {
-        int n0 = ring_chars(43.0f, 3.0f), n1 = ring_chars(60.0f, 3.0f);
-        hexline(a, n0 < 150 ? n0 : 150);
-        hexline(b, n1 < 150 ? n1 : 150);
-        dome_text_arc(&g_txt[0], a, 43.0f, -90.0f, 3.0f, 1.0f, 0.6f, 0.1f, 0.9f);
-        dome_text_arc(&g_txt[1], b, 60.0f, -90.0f, 3.0f, 0.2f, 0.9f, 0.8f, 0.9f);
+        /* five rings of hex, the outer three filling the dome to its rim */
+        static const float RAD[NTXT] = { 43.0f, 60.0f, 73.5f, 79.5f, 85.5f };
+        static const float HGT[NTXT] = { 3.0f, 3.0f, 3.2f, 3.2f, 3.2f };
+        for (int i = 0; i < NTXT; i++) {
+            int n = ring_chars(RAD[i], HGT[i]);
+            hexline(a, n < 150 ? n : 150);
+            int amber = !(i & 1);
+            dome_text_arc(&g_txt[i], a, RAD[i], -90.0f, HGT[i],
+                          amber ? 1.0f : 0.2f, amber ? 0.6f : 0.9f, amber ? 0.1f : 0.8f, 0.9f);
+        }
+        (void)b;
         break;
     }
     default: break;
     }
-    for (int i = 0; i < 2; i++) dome_points_upload(&g_txt[i]);
+    for (int i = 0; i < NTXT; i++) dome_points_upload(&g_txt[i]);
     g_txt_built = time(NULL);
 }
 
@@ -354,7 +365,7 @@ static void build_text(int s, int contacts)
 static void init(void)
 {
     for (int i = 0; i < NSTYLE; i++) g_prog[i] = dome_surface_program_lib(DOME_GLSL_NOISE, GLSL[i]);
-    for (int i = 0; i < 2; i++) dome_points_init(&g_txt[i], 40000);
+    for (int i = 0; i < NTXT; i++) dome_points_init(&g_txt[i], 40000);
     dome_points_init(&g_blip, MAX_BLIP);
     for (int i = 0; i < 14; i++) { g_fake[i].lat = 0.15f + frnd() * 1.05f; g_fake[i].lon = frnd() * 6.2832f; }
 }
@@ -381,8 +392,8 @@ static void update(const DomeFrame *f)
     g_t += dt;
     g_sweep = fmodf(g_sweep + dt * 1.2f, 6.2832f);
     warp_update(dt);
-    g_txt_rot[0] += dt * 0.05f;
-    g_txt_rot[1] -= dt * 0.03f;
+    static const float RATE[NTXT] = { 0.05f, -0.03f, 0.02f, -0.015f, 0.01f };
+    for (int i = 0; i < NTXT; i++) g_txt_rot[i] += dt * RATE[i];
 }
 
 static void draw(const DomeFrame *f)
@@ -413,11 +424,11 @@ static void draw(const DomeFrame *f)
         /* readouts refresh every couple of seconds */
         if (time(NULL) - g_txt_built >= 2) build_text(s, contacts);
         if (s == 5) {
-            mat3 r0, r1;
-            m3_rz(r0, g_txt_rot[0]);
-            m3_rz(r1, g_txt_rot[1]);
-            dome_draw_points(&g_txt[0], r0, f->fade, 2.5f);
-            dome_draw_points(&g_txt[1], r1, f->fade, 2.5f);
+            for (int i = 0; i < NTXT; i++) {
+                mat3 r;
+                m3_rz(r, g_txt_rot[i]);
+                dome_draw_points(&g_txt[i], r, f->fade, 2.5f);
+            }
         } else {
             dome_draw_points(&g_txt[0], still, f->fade, 2.5f);
         }
