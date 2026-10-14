@@ -14,13 +14,23 @@
 static struct {
     float trail, dot_size, dot_sp, dish_dep, grid_deg, pole_dim, dish_lat;
     float hull, panels, lines;
-} L = { 1.0f, 2.0f, 0.025f, 0.15f, 5.0f, 0.0f, -35.0f, 1.0f, 1.0f, 0.7f };
+    float panel_h, panel_w, seam_y, seam_x;
+} L = { 1.0f, 2.0f, 0.025f, 0.15f, 5.0f, 0.0f, -35.0f, 1.0f, 1.0f, 0.7f,
+        3.0f, 3.0f, 4.0f, 6.0f };
 
 static Param P[] = {
     { "hull",     &L.hull,     0.05f,   0.0f, 1.5f, 0,
       "brightness of the solid hull (0 = wireframe only)" },
     { "panels",   &L.panels,   0.1f,    0.0f, 2.0f, 0,
       "contrast of the hull panelling" },
+    { "panel_h",  &L.panel_h,  0.5f,    0.5f, 20.0f, 0,
+      "height of the hull plates in degrees" },
+    { "panel_w",  &L.panel_w,  0.5f,    0.5f, 30.0f, 0,
+      "width of the hull plates in degrees (at the equator)" },
+    { "seam_y",   &L.seam_y,   1.0f,    0.0f, 12.0f, 0,
+      "heavy seam every this many bands of plates (0 = none)" },
+    { "seam_x",   &L.seam_x,   1.0f,    0.0f, 24.0f, 0,
+      "heavy seam every this many plates along a band (0 = none)" },
     { "lines",    &L.lines,    0.05f,   0.0f, 1.0f, 0,
       "brightness of the green grid lines (0 = none)" },
     { "trail",    &L.trail,    0.1f,    0.0f, 3.0f, 0,
@@ -53,28 +63,33 @@ static const char *HULL_GLSL =
     "uniform float u_dish_dep;\n"
     "uniform float u_hull;\n"
     "uniform float u_panels;\n"
+    "uniform float u_panel_h, u_panel_w, u_seam_y, u_seam_x;\n"
     "float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec3 light = normalize(vec3(-0.40, 0.50, 0.77));\n"
     "  float lat = asin(clamp(dir.y, -1.0, 1.0));\n"
     "  float lon = atan(dir.x, dir.z);\n"
     /* hull plating, laid out like a real build: latitude bands of fixed
-     * height, each split into a whole number of plates, so every seam is
-     * a straight line. Every 4th band and every 6th plate is a heavier
-     * structural seam. Plates differ only slightly in tone. */
-    "  float BAND = PI / 60.0;\n"                       /* 3 degree bands */
+     * height (panel_h degrees), each split into a whole number of plates
+     * about panel_w degrees wide, so every seam is a straight line. Every
+     * seam_y-th band and seam_x-th plate is a heavier structural seam
+     * (0 turns that off). Plates differ only slightly in tone. */
+    "  float BAND = u_panel_h * PI / 180.0;\n"
     "  float bi = floor(lat / BAND);\n"
     "  float fy = fract(lat / BAND);\n"
     "  float bc = (bi + 0.5) * BAND;\n"                 /* band centre    */
-    "  float np = max(4.0, floor(120.0 * cos(bc) + 0.5));\n"
+    "  float np = max(4.0, floor((360.0 / u_panel_w) * cos(bc) + 0.5));\n"
     "  float u = (lon / (2.0 * PI) + 0.5) * np;\n"
     "  float pi_ = floor(u), fx = fract(u);\n"
     "  float h1 = hash(vec2(pi_, bi));\n"
     "  float sx = min(fx, 1.0 - fx), sy = min(fy, 1.0 - fy);\n"
     "  float seam = smoothstep(0.0, 0.05, sx) * smoothstep(0.0, 0.05, sy);\n"
-    "  float major_y = step(mod(bi, 4.0), 0.5) * (1.0 - smoothstep(0.0, 0.10, fy))\n"
-    "                + step(3.5, mod(bi, 4.0)) * (1.0 - smoothstep(0.0, 0.10, 1.0 - fy));\n"
-    "  float major_x = step(mod(pi_, 6.0), 0.5) * (1.0 - smoothstep(0.0, 0.12, fx));\n"
+    "  float sy_n = max(u_seam_y, 1.0), sx_n = max(u_seam_x, 1.0);\n"
+    "  float major_y = step(0.5, u_seam_y) * (\n"
+    "        step(mod(bi, sy_n), 0.5) * (1.0 - smoothstep(0.0, 0.10, fy))\n"
+    "      + step(sy_n - 0.5, mod(bi, sy_n)) * (1.0 - smoothstep(0.0, 0.10, 1.0 - fy)));\n"
+    "  float major_x = step(0.5, u_seam_x)\n"
+    "        * step(mod(pi_, sx_n), 0.5) * (1.0 - smoothstep(0.0, 0.12, fx));\n"
     "  float major = max(major_y, major_x);\n"
     "  float base = 0.72 + u_panels * (h1 - 0.5) * 0.07;\n"
     "  if (h1 > 0.93) base -= 0.06 * u_panels;\n"       /* the odd darker plate */
@@ -255,6 +270,10 @@ static void draw(const DomeFrame *f)
         glUniform1f(glGetUniformLocation(g_prog, "u_dish_dep"), L.dish_dep);
         glUniform1f(glGetUniformLocation(g_prog, "u_hull"), L.hull);
         glUniform1f(glGetUniformLocation(g_prog, "u_panels"), L.panels);
+        glUniform1f(glGetUniformLocation(g_prog, "u_panel_h"), L.panel_h);
+        glUniform1f(glGetUniformLocation(g_prog, "u_panel_w"), L.panel_w);
+        glUniform1f(glGetUniformLocation(g_prog, "u_seam_y"), floorf(L.seam_y + 0.5f));
+        glUniform1f(glGetUniformLocation(g_prog, "u_seam_x"), floorf(L.seam_x + 0.5f));
         dome_surface_end();
     }
     if (L.lines <= 0.0f) return;
