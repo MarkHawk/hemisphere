@@ -3,32 +3,35 @@
  *
  *   0 op art         black and white rings that ripple and interfere
  *   1 psychedelic    bold rainbow bands spiralling round, poster style
- *   2 70s wallpaper  interlocking circles and wavy stripes, scrolling
- *   3 flower power   pop-colour daisies opening and closing in waves
- *   4 lava lamp      glowing wax blobs rising, merging and splitting
- *   5 mood ring      the globe drifts through mood ring colours, glassy
- *   6 mirror ball    a disco ball of glinting tiles under coloured lights
- *   7 liquid light   swirling coloured oils, like a 60s light show
- *   8 glam stars     silver and pink star flares and glitter, glam rock
+ *   2 flower power   pop-colour daisies opening and closing in waves
+ *   3 lava lamp      glowing wax blobs rising, merging and splitting
+ *   4 liquid light   swirling coloured oils, like a 60s light show
+ *   5 tie-dye        spiral dye bands bleeding outwards from a fold,
+ *                    then a fresh dye spreading over the old one
+ *   6 paisley        curling paisley teardrops drifting over the globe
+ *   7 spirograph     a pen tracing gear patterns out to the rim, layer
+ *                    on layer, then a clean sheet
  *
- * The patterns on the ball turn with it; the lava lamp stays put, facing
- * you.
+ * The patterns on the ball turn with it; the lava lamp and spirograph
+ * stay put, facing you. groovy.cfg from before 2026-10 used other style
+ * numbers; an old value just picks a different style.
  */
 #include "../dome/dome.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-#define NSTYLE 9
+#define NSTYLE 8
 static const char *NAMES[NSTYLE] = {
-    "op art", "psychedelic swirl", "70s wallpaper", "flower power",
-    "lava lamp", "mood ring", "mirror ball", "liquid light", "glam stars"
+    "op art", "psychedelic swirl", "flower power", "lava lamp",
+    "liquid light", "tie-dye", "paisley", "spirograph"
 };
 
 static struct { float style, speed, scale, bright; } L = { 0.0f, 1.0f, 1.0f, 1.0f };
 
 static Param P[] = {
-    { "style",  &L.style,  1.0f, 0.0f, 8.0f, 0,
-      "0 op art, 1 swirl, 2 wallpaper, 3 flowers, 4 lava lamp, 5 mood ring, 6 mirror ball, 7 liquid light, 8 glam stars (N)" },
+    { "style",  &L.style,  1.0f, 0.0f, 7.0f, 0,
+      "0 op art, 1 swirl, 2 flowers, 3 lava lamp, 4 liquid light, 5 tie-dye, 6 paisley, 7 spirograph (N)" },
     { "speed",  &L.speed,  0.1f, 0.0f, 4.0f, 0, "speed of the animation" },
     { "scale",  &L.scale,  0.05f, 0.4f, 2.5f, 0, "size of the pattern (bigger = finer)" },
     { "bright", &L.bright, 0.05f, 0.2f, 2.0f, 0, "brightness" },
@@ -77,7 +80,7 @@ static const char SWIRL[] =
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 7: liquid light, rebuilt from sine waves instead of noise so it is
+/* ---- 4: liquid light, rebuilt from sine waves instead of noise so it is
  * cheap enough for the Pi 3. The oils are layers of waves, each one bent
  * by the one before (domain warping), which makes them swirl and fold. ---- */
 static const char LIQUID[] =
@@ -102,37 +105,7 @@ static const char LIQUID[] =
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 2: 70s wallpaper ---- */
-static const char WALLPAPER[] =
-    U
-    "vec3 c5(float i){\n"
-    "  if (i < 0.5) return vec3(0.36, 0.20, 0.10);\n"       /* brown    */
-    "  if (i < 1.5) return vec3(0.86, 0.45, 0.10);\n"       /* orange   */
-    "  if (i < 2.5) return vec3(0.90, 0.70, 0.20);\n"       /* mustard  */
-    "  if (i < 3.5) return vec3(0.50, 0.55, 0.20);\n"       /* avocado  */
-    "  return vec3(0.95, 0.88, 0.70);\n"                    /* cream    */
-    "}\n"
-    "vec4 surface(vec3 dir, vec3 view){\n"
-    "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
-    "  float N = floor(10.0 * u_scale + 0.5);\n"
-    "  vec2 g = vec2(lon / (2.0 * PI) * N, lat / PI * N + u_t * 0.05);\n"
-    "  vec2 cell = floor(g);\n"
-    "  vec2 f = fract(g) - 0.5;\n"
-    "  if (mod(cell.y, 2.0) > 0.5) { f.x = fract(g.x + 0.5) - 0.5; cell.x = floor(g.x + 0.5); }\n"
-    "  float d = length(f);\n"
-    "  vec3 c;\n"
-    "  if (d < 0.47) {\n"
-    "    float band = floor(d * 8.0);\n"
-    "    c = c5(mod(band + mod(cell.x + cell.y, 2.0) * 2.0, 5.0));\n"
-    "    c *= 0.85 + 0.15 * smoothstep(0.0, 0.08, abs(fract(d * 8.0) - 0.5));\n"
-    "  } else {\n"
-    "    float s = fract((g.y + 0.08 * sin(g.x * 12.566)) * 5.0);\n"
-    "    c = s < 0.5 ? c5(4.0) : c5(1.0) * 0.9;\n"
-    "  }\n"
-    "  return vec4(c * u_bright, 1.0);\n"
-    "}\n";
-
-/* ---- 3: flower power ---- */
+/* ---- 2: flower power ---- */
 static const char FLOWERS[] =
     U
     "vec3 petal(float h){\n"
@@ -159,7 +132,7 @@ static const char FLOWERS[] =
     "  return vec4(c * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 4: lava lamp (fixed to the dome) ---- */
+/* ---- 3: lava lamp (fixed to the dome) ---- */
 static const char LAVA[] =
     U
     "vec4 surface(vec3 dir, vec3 view){\n"
@@ -180,111 +153,255 @@ static const char LAVA[] =
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 5: mood ring: the whole globe drifts slowly through the colours of
- * a mood ring, warmer and cooler patches wandering across it like heat,
- * under a glassy sheen. A few sines per pixel. ---- */
-static const char MOOD[] =
+/* ---- 5: tie-dye. Five dyes wound into a spiral round a fold point,
+ * crinkled where the cloth was bunched, with pale bleed lines between
+ * the bands. Every 40 seconds a new fold point is dyed and its colours
+ * spread out over the old ones until they cover the globe. ---- */
+static const char TIEDYE[] =
     U
-    "vec3 ring(float x){\n"
-    "  x = fract(x) * 5.0;\n"
-    "  vec3 a = vec3(1.00, 0.62, 0.05), b = vec3(0.20, 0.90, 0.35), c = vec3(0.05, 0.85, 0.85),\n"
-    "       d = vec3(0.15, 0.35, 1.00), e = vec3(0.75, 0.20, 1.00);\n"   /* amber, green, turquoise, blue, violet */
-    "  float f = smoothstep(0.25, 0.75, fract(x));\n"
-    "  if (x < 1.0) return mix(a, b, f);\n"
-    "  if (x < 2.0) return mix(b, c, f);\n"
-    "  if (x < 3.0) return mix(c, d, f);\n"
-    "  if (x < 4.0) return mix(d, e, f);\n"
-    "  return mix(e, a, f);\n"
+    "vec3 dye(float i){\n"
+    "  i = mod(i, 5.0);\n"
+    "  if (i < 1.0) return vec3(0.95, 0.08, 0.45);\n"     /* magenta */
+    "  if (i < 2.0) return vec3(1.00, 0.50, 0.05);\n"     /* orange  */
+    "  if (i < 3.0) return vec3(1.00, 0.90, 0.12);\n"     /* yellow  */
+    "  if (i < 4.0) return vec3(0.08, 0.70, 0.95);\n"     /* sky     */
+    "  return vec3(0.42, 0.12, 0.85);\n"                  /* purple  */
+    "}\n"
+    "vec3 fold(float k){\n"                               /* fold point of dye cycle k */
+    "  return normalize(vec3(sin(k * 2.4), 0.6 * sin(k * 1.7 + 1.0), cos(k * 2.4)));\n"
+    "}\n"
+    "vec3 pattern(vec3 dir, float k, out float a){\n"
+    "  vec3 C = fold(k);\n"
+    "  a = acos(clamp(dot(dir, C), -1.0, 1.0));\n"
+    "  vec3 e1 = normalize(cross(C, vec3(0.31, 0.95, 0.0)));\n"
+    "  vec3 e2 = cross(C, e1);\n"
+    "  float th = atan(dot(dir, e2), dot(dir, e1));\n"
+    "  float crk = sin(th * 7.0 + a * 5.0) * 0.18 + sin(th * 19.0 - a * 13.0) * 0.07;\n"
+    "  float v = a * 3.2 * u_scale + th * 5.0 / (2.0 * PI) + crk - u_t * 0.05;\n"
+    "  float f = fract(v), i = floor(v) + k * 2.0;\n"
+    "  vec3 col = mix(dye(i), dye(i + 1.0), smoothstep(0.80, 1.0, f));\n"
+    "  col = mix(col, vec3(1.0, 0.97, 0.92), 0.55 * smoothstep(0.07, 0.0, min(f, 1.0 - f)));\n"
+    "  return col * (0.88 + 0.12 * sin(th * 40.0 + a * 30.0));\n"   /* weave */
     "}\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
-    "  vec3 p = dir * 1.6 * u_scale;\n"
-    "  float w = sin(p.x * 1.7 + sin(p.y * 2.3 + u_t * 0.21) + u_t * 0.13)\n"
-    "          + sin(p.z * 1.9 + sin(p.x * 1.5 - u_t * 0.17) - u_t * 0.11);\n"
-    "  float x = u_t * 0.025 + w * 0.16;\n"
-    "  vec3 col = ring(x);\n"
-    "  col *= 0.70 + 0.30 * pow(max(view.z, 0.0), 0.6);\n"               /* deep at the edge */
-    "  col += ring(x + 0.2) * pow(1.0 - max(view.z, 0.0), 3.0) * 0.25;\n" /* coloured rim */
-    "  col += vec3(1.0) * pow(max(dot(view, normalize(vec3(-0.35, 0.45, 0.82))), 0.0), 60.0) * 0.55;\n"
+    "  float T = u_t / 40.0, k = floor(T), ph = fract(T);\n"
+    "  float a0, a1;\n"
+    "  vec3 old = pattern(dir, k - 1.0, a0);\n"
+    "  vec3 fresh = pattern(dir, k, a1);\n"
+    "  float R = ph * 4.2;\n"                            /* the new dye front */
+    "  float wet = smoothstep(R + 0.25, R - 0.05, a1);\n"
+    "  vec3 col = mix(old, fresh, wet);\n"
+    "  col *= 1.0 - 0.25 * exp(-pow((a1 - R) * 9.0, 2.0)) * step(ph, 0.85);\n"   /* dark wet edge */
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 6: mirror ball ---- */
-static const char MIRROR[] =
+/* ---- 6: paisley: rows of teardrops round the globe, each with a curled
+ * tail, outlined bands, an eye and a ring of dots, swaying as the rows
+ * drift in opposite directions ---- */
+static const char PAISLEY[] =
     U
-    "vec4 surface(vec3 dir, vec3 view){\n"
-    "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
-    "  float rows = floor(36.0 * u_scale + 0.5);\n"
-    "  float rf = (lat / PI + 0.5) * rows;\n"
-    "  float row = floor(rf);\n"
-    "  float latc = ((row + 0.5) / rows - 0.5) * PI;\n"
-    "  float n = max(4.0, floor(rows * 2.0 * cos(latc) + 0.5));\n"
-    "  float cf = (lon / (2.0 * PI) + 0.5) * n;\n"
-    "  float col_i = floor(cf);\n"
-    "  vec2 fr = vec2(fract(cf), fract(rf));\n"
-    "  float grout = smoothstep(0.0, 0.10, min(min(fr.x, 1.0 - fr.x), min(fr.y, 1.0 - fr.y)));\n"
-    "  float h = h3(vec3(row, col_i, 3.0));\n"
-    /* each tile is a flat mirror, tilted a touch */
-    "  vec3 nt = normalize(dir + (vec3(h3(vec3(row, col_i, 1.0)), h3(vec3(row, col_i, 2.0)), h) - 0.5) * 0.08);\n"
-    "  vec3 nv = u_rot * nt;\n"
-    "  vec3 R = reflect(vec3(0.0, 0.0, -1.0), nv);\n"
-    "  vec3 spec = vec3(0.0);\n"
-    "  for (int k = 0; k < 4; k++) {\n"
-    "    float fk = float(k);\n"
-    "    vec3 Lk = normalize(vec3(sin(u_t * 0.3 + fk * 1.57), 0.5 * cos(u_t * 0.23 + fk * 2.1), 0.8));\n"
-    "    vec3 ck = fk < 0.5 ? vec3(1.0, 0.3, 0.8) : fk < 1.5 ? vec3(0.3, 0.9, 1.0)\n"
-    "            : fk < 2.5 ? vec3(1.0, 0.85, 0.3) : vec3(1.0);\n"
-    "    spec += ck * (pow(max(dot(R, Lk), 0.0), 40.0) * 1.3 + pow(max(dot(R, Lk), 0.0), 6.0) * 0.12);\n"
-    "  }\n"
-    "  vec3 base = vec3(0.40, 0.42, 0.46) * (0.55 + 0.6 * h) * (0.45 + 0.55 * max(nv.z, 0.0));\n"
-    "  float spark = step(0.996, h3(vec3(row, col_i, floor(u_t * 6.0))));\n"
-    "  vec3 c = (base + spec + vec3(spark)) * grout;\n"
-    "  return vec4(c * u_bright, 1.0);\n"
-    "}\n";
-
-/* ---- 8: glam stars: four-point star flares that brighten and fade at
- * their own pace, silver and pink, on plum satin with glitter dust ---- */
-static const char GLAM[] =
-    U
+    "vec3 ink(float i){\n"
+    "  i = mod(i, 4.0);\n"
+    "  if (i < 1.0) return vec3(0.95, 0.70, 0.10);\n"     /* mustard */
+    "  if (i < 2.0) return vec3(0.85, 0.15, 0.20);\n"     /* red     */
+    "  if (i < 3.0) return vec3(0.10, 0.65, 0.60);\n"     /* teal    */
+    "  return vec3(0.85, 0.30, 0.65);\n"                  /* rose    */
+    "}\n"
     "vec2 rot2(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
-    /* rows of roughly square cells, fewer towards the poles */
-    "  float rows = floor(6.0 * u_scale + 0.5);\n"
+    "  float rows = floor(7.0 * u_scale + 0.5);\n"
     "  float rf = (lat / PI + 0.5) * rows, row = floor(rf);\n"
     "  float latc = ((row + 0.5) / rows - 0.5) * PI;\n"
-    "  float n = max(1.0, floor(rows * 2.0 * cos(latc) + 0.5));\n"
-    "  float cf = (lon / (2.0 * PI) + 0.5) * n, cl = floor(cf);\n"
+    "  float n = max(2.0, floor(rows * 2.0 * cos(latc) + 0.5));\n"
+    "  float drift = u_t * 0.012 * (mod(row, 2.0) < 0.5 ? 1.0 : -1.0);\n"
+    "  float cf = (lon / (2.0 * PI) + 0.5 + drift) * n, cl = floor(cf);\n"
+    "  cl = mod(cl, n);\n"
     "  vec2 q = vec2((fract(cf) - 0.5) * 2.0 * rows * cos(lat) / n, fract(rf) - 0.5);\n"
-    "  float h = h3(vec3(row, cl, 5.0)), h2 = h3(vec3(row, cl, 6.0));\n"
-    "  vec3 col = mix(vec3(0.07, 0.0, 0.10), vec3(0.22, 0.02, 0.20),\n"
-    "                 0.5 + 0.5 * sin(lat * 3.0 + lon + u_t * 0.3));\n"
-    "  vec3 g = floor(dir * 140.0);\n"                                  /* glitter dust */
-    "  col += mix(vec3(1.0, 0.4, 0.8), vec3(0.9, 0.9, 1.0), h3(g))\n"
-    "         * step(0.982, h3(g + floor(u_t * 7.0)));\n"
-    "  if (h > 0.33) {\n"
-    "    vec2 s = q - (vec2(h, h2) - 0.5) * 0.15;\n"
-    "    s = rot2(s, h2 * 6.0 + u_t * 0.15 * (h - 0.6));\n"
-    "    float tw = pow(0.5 + 0.5 * sin(u_t * (1.0 + 2.0 * h2) + h * 40.0), 3.0);\n"
-    "    float size = 0.5 + 0.5 * h2;\n"
-    "    vec2 a = abs(s) / size;\n"
-    "    float arms = exp(-a.y * 28.0) * max(0.0, 1.0 - a.x * 2.4) + exp(-a.x * 28.0) * max(0.0, 1.0 - a.y * 2.4);\n"
-    "    vec2 d = abs(rot2(s, 0.7854)) / size;\n"
-    "    arms += 0.6 * (exp(-d.y * 40.0) * max(0.0, 1.0 - d.x * 4.0) + exp(-d.x * 40.0) * max(0.0, 1.0 - d.y * 4.0));\n"
-    "    float core = exp(-dot(s, s) / (size * size) * 90.0);\n"
-    "    vec3 sc = mix(vec3(0.85, 0.88, 1.0), vec3(1.0, 0.35, 0.75), step(0.6, h2));\n"
-    "    col += sc * (arms * (0.5 + 1.2 * tw) + core * 0.6 * (0.4 + tw)) + vec3(1.0) * core * (0.4 + 1.2 * tw);\n"
+    "  float h = h3(vec3(row, cl, 2.0));\n"
+    "  float flip = mod(row + cl, 2.0) < 0.5 ? 1.0 : -1.0;\n"
+    "  vec3 bg = mod(row, 2.0) < 0.5 ? vec3(0.10, 0.04, 0.16) : vec3(0.04, 0.10, 0.14);\n"
+    "  vec3 col = bg + vec3(0.05, 0.03, 0.02) * step(0.8, fract((q.x + q.y) * 18.0));\n"
+    /* the teardrop, bent so its tip curls */
+    "  vec2 p = rot2(q * 0.70, flip * 0.5 + 0.25 * sin(u_t * 0.5 + h * 6.0));\n"
+    "  p.x *= flip;\n"
+    "  vec2 b = vec2(p.x - 1.6 * pow(max(p.y + 0.02, 0.0), 2.0), p.y + 0.06);\n"
+    "  float w = b.y < 0.0 ? 0.27 * sqrt(max(0.0, 1.0 - pow(b.y / 0.27, 2.0)))\n"
+    "                      : 0.27 * pow(max(0.0, 1.0 - b.y / 0.44), 1.4);\n"
+    "  float d = abs(b.x) - w;\n"
+    "  if (b.y < -0.27 || b.y > 0.44) d = max(d, 0.02);\n"
+    "  float ci = floor(h * 4.0);\n"
+    "  if (d < 0.0) {\n"
+    "    float band = floor(-d / 0.045);\n"
+    "    col = ink(ci + band) * (0.75 + 0.25 * smoothstep(0.0, 0.02, fract(-d / 0.045) * 0.045));\n"
+    "    float e = length(b - vec2(0.0, -0.06));\n"         /* the eye */
+    "    if (e < 0.08) col = mix(ink(ci + 2.0), vec3(1.0, 0.95, 0.8), step(e, 0.03));\n"
+    "    col *= smoothstep(0.0, 0.012, abs(e - 0.08));\n"
     "  }\n"
+    "  col *= smoothstep(0.0, 0.012, abs(d));\n"           /* outline */
+    "  float dots = step(0.03, d) * step(d, 0.075) * step(0.55, fract(atan(b.y + 0.06, b.x) * 4.0));\n"
+    "  col = mix(col, ink(ci + 1.0) * 1.1, dots * step(length(fract(vec2(atan(b.y + 0.06, b.x) * 4.0, d * 18.0)) - 0.5), 0.3));\n"
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-static const char *GLSL[NSTYLE] = { OPART, SWIRL, WALLPAPER, FLOWERS, LAVA, MOOD, MIRROR, LIQUID, GLAM };
+/* ---- 7: spirograph: a dark sheet (surface), with the pen lines drawn as
+ * dots in dome space. The fixed ring and the rolling gear are shown
+ * faintly while the pen is drawing. ---- */
+static const char SHEET[] =
+    U
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float a = acos(clamp(view.z, -1.0, 1.0));\n"
+    "  vec3 col = mix(vec3(0.05, 0.06, 0.13), vec3(0.01, 0.01, 0.04), a / 1.6);\n"
+    "  col += vec3(0.03) * (h3(floor(view * 300.0)) - 0.5);\n"   /* paper grain */
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+static const char *GLSL[NSTYLE] = { OPART, SWIRL, FLOWERS, LAVA, LIQUID, TIEDYE, PAISLEY, SHEET };
 static GLuint g_prog[NSTYLE];
 static float  g_t;
+
+/* ---------------------------------------------------------------- */
+/* Spirograph                                                         */
+/* ---------------------------------------------------------------- */
+#define SPIRO_LAYERS 4
+#define SPIRO_STEPS  5000          /* dots per curve */
+#define RIM_DEG      88.0f
+
+static DomePoints g_done, g_pen;   /* finished curves; the one being drawn */
+static struct { float R, r, d, col[3], turn; } g_curve[SPIRO_LAYERS];
+static int   g_layer;              /* curve being drawn */
+static float g_prog_t;             /* 0..1 along it */
+static float g_fade = 1.0f;        /* 1, or fading out after the last layer */
+static int   g_set;
+
+static const float PENS[6][3] = {
+    { 1.0f, 0.35f, 0.70f }, { 0.25f, 0.85f, 1.0f }, { 1.0f, 0.85f, 0.25f },
+    { 0.45f, 1.0f, 0.45f }, { 1.0f, 0.55f, 0.20f }, { 0.75f, 0.50f, 1.0f },
+};
+
+static int gcd(int a, int b) { while (b) { int t = a % b; a = b; b = t; } return a; }
+
+/* a point in the flat drawing (radius 1 = the rim) onto the dome */
+static void flat_to_dome(float x, float y, float out[3])
+{
+    float rho = sqrtf(x * x + y * y);
+    float a = rho * DEG2RAD(RIM_DEG);
+    float s = rho > 1e-6f ? sinf(a) / rho : 0.0f;
+    out[0] = x * s; out[1] = y * s; out[2] = cosf(a);
+}
+
+/* the pen's position at parameter t (radians) on curve c, flat coords */
+static void spiro_at(int c, float t, float *x, float *y)
+{
+    float R = g_curve[c].R, r = g_curve[c].r, d = g_curve[c].d;
+    float k = (R - r) / r, norm = 1.0f / (R - r + d);
+    float px = (R - r) * cosf(t) + d * cosf(k * t);
+    float py = (R - r) * sinf(t) - d * sinf(k * t);
+    float c0 = cosf(g_curve[c].turn), s0 = sinf(g_curve[c].turn);
+    *x = (px * c0 - py * s0) * norm;
+    *y = (px * s0 + py * c0) * norm;
+}
+
+static float spiro_len(int c)      /* parameter length of the closed curve */
+{
+    int R = (int)g_curve[c].R, r = (int)g_curve[c].r;
+    return 2.0f * DOME_PI * (float)(r / gcd(R, r));
+}
+
+static void spiro_push(DomePoints *p, int c, float t0, float t1, int steps, float a)
+{
+    float v[3];
+    for (int i = 0; i <= steps; i++) {
+        float x, y;
+        spiro_at(c, t0 + (t1 - t0) * i / steps, &x, &y);
+        flat_to_dome(x, y, v);
+        dome_points_push(p, v[0], v[1], v[2], g_curve[c].col[0], g_curve[c].col[1], g_curve[c].col[2], a);
+    }
+}
+
+static void spiro_new_set(void)
+{
+    static const int RING[3] = { 96, 105, 144 };
+    static const int GEAR[10] = { 24, 30, 32, 40, 45, 52, 56, 60, 63, 84 };
+    int R = RING[g_set % 3];
+    int first = rand() % 6;
+    for (int c = 0; c < SPIRO_LAYERS; c++) {
+        int r;
+        do r = GEAR[rand() % 10]; while (r >= R || R / gcd(R, r) > 16 || r / gcd(R, r) > 14);
+        g_curve[c].R = (float)R;
+        g_curve[c].r = (float)r;
+        g_curve[c].d = r * (0.55f + 0.4f * (float)rand() / RAND_MAX);
+        g_curve[c].turn = c * 0.4f;
+        for (int k = 0; k < 3; k++) g_curve[c].col[k] = PENS[(first + c) % 6][k];
+    }
+    g_set++;
+    g_layer = 0; g_prog_t = 0; g_fade = 1.0f;
+    dome_points_clear(&g_done);
+    dome_points_upload(&g_done);
+}
+
+static void spiro_update(float dt)
+{
+    if (g_layer >= SPIRO_LAYERS) {             /* admire it, then fade */
+        g_fade -= dt / 4.0f;
+        if (g_fade < -0.5f) spiro_new_set();
+        return;
+    }
+    g_prog_t += dt / 14.0f;                    /* 14 s per curve */
+    if (g_prog_t >= 1.0f) {
+        int c = g_layer;
+        spiro_push(&g_done, c, 0.0f, spiro_len(c), SPIRO_STEPS, 0.9f);
+        dome_points_upload(&g_done);
+        g_layer++; g_prog_t = 0;
+        if (g_layer >= SPIRO_LAYERS) g_fade = 2.0f;   /* hold, then fade */
+    }
+}
+
+static void spiro_draw(const DomeFrame *f)
+{
+    mat3 spin; m3_rz(spin, g_t * 0.03f);
+    float a = f->fade * fminf(1.0f, fmaxf(g_fade, 0.0f));
+    dome_draw_points(&g_done, spin, a, 3.0f);
+    dome_points_clear(&g_pen);
+    if (g_layer < SPIRO_LAYERS) {
+        int c = g_layer;
+        float tl = spiro_len(c) * g_prog_t;
+        spiro_push(&g_pen, c, 0.0f, tl, (int)(SPIRO_STEPS * g_prog_t) + 1, 0.9f);
+        /* the toy: fixed ring and rolling gear, faint */
+        float R = g_curve[c].R, r = g_curve[c].r, norm = 1.0f / (R - r + g_curve[c].d);
+        float c0 = cosf(g_curve[c].turn), s0 = sinf(g_curve[c].turn);
+        float gx = (R - r) * cosf(tl), gy = (R - r) * sinf(tl), v[3];
+        for (int i = 0; i < 360; i++) {
+            float ang = i * DOME_PI / 180.0f;
+            float x = R * cosf(ang) * norm, y = R * sinf(ang) * norm;
+            if (x * x + y * y < 1.0f) {
+                flat_to_dome(x, y, v);
+                dome_points_push(&g_pen, v[0], v[1], v[2], 0.6f, 0.6f, 0.7f, 0.25f);
+            }
+            if (i % 2) continue;
+            float hx = gx + r * cosf(ang), hy = gy + r * sinf(ang);
+            x = (hx * c0 - hy * s0) * norm; y = (hx * s0 + hy * c0) * norm;
+            if (x * x + y * y < 1.0f) {
+                flat_to_dome(x, y, v);
+                dome_points_push(&g_pen, v[0], v[1], v[2], 0.7f, 0.7f, 0.8f, 0.30f);
+            }
+        }
+        float px, py;                              /* the pen */
+        spiro_at(c, tl, &px, &py);
+        flat_to_dome(px, py, v);
+        dome_points_push(&g_pen, v[0], v[1], v[2], 1.0f, 1.0f, 1.0f, 1.0f);
+    }
+    dome_points_upload(&g_pen);
+    dome_draw_points(&g_pen, spin, f->fade, 3.0f);
+}
 
 /* ---------------------------------------------------------------- */
 static void init(void)
 {
     for (int i = 0; i < NSTYLE; i++) g_prog[i] = dome_surface_program_lib(DOME_GLSL_NOISE, GLSL[i]);
+    dome_points_init(&g_done, SPIRO_LAYERS * (SPIRO_STEPS + 1) + 16);
+    dome_points_init(&g_pen, SPIRO_STEPS + 1000);
+    spiro_new_set();
 }
 
 static int style(void)
@@ -293,7 +410,12 @@ static int style(void)
     return s < 0 ? 0 : s >= NSTYLE ? NSTYLE - 1 : s;
 }
 
-static void update(const DomeFrame *f) { g_t += f->dt * L.speed; }
+static void update(const DomeFrame *f)
+{
+    float dt = f->dt * L.speed;
+    g_t += dt;
+    if (style() == 7) spiro_update(dt);
+}
 
 static void draw(const DomeFrame *f)
 {
@@ -304,6 +426,7 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     dome_surface_end();
+    if (s == 7) spiro_draw(f);
 }
 
 static int key(SDL_Keycode k, int shift)
