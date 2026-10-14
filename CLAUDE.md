@@ -7,11 +7,12 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
 
 ## Layout
 
-- `main.c`: entry point, scene switching. The 15 scenes, in `main.c` order:
+- `main.c`: entry point, scene switching. The 14 scenes, in `main.c` order:
   deathstar, planet, plasma, julia, kaleido, life, moon, orbit, groovy, scifi,
-  groovy2, hypno, balls, retro, seasons. The first ten are on number keys 1 to
+  computers, hypno, balls, retro. The first ten are on number keys 1 to
   9 and 0; the rest are on `,` and `.` and the web remote. The framework
-  allows up to 16 scenes.
+  allows up to 16 scenes. Aim for 8 good styles per scene; the plan and the
+  quality bar are in the "Hemisphere scene plan" doc.
 - `dome/`: the framework: lens mapping and calibration (`dome.c`, `dome.h`),
   the GL loader for Windows (`glload.c`, `glload.h`), shaders (`shaders.h`),
   text rendering (`text.c`, `font5x7.h`)

@@ -36,7 +36,7 @@ write it up (see [Debugging notes](#debugging-notes)).
 I built it with AI-assisted tooling (Claude Code). I directed the work,
 tested every change on the real display, and did the calibration myself.
 
-Fifteen scenes come with it. The first ten are on the number keys; the
+Fourteen scenes come with it. The first ten are on the number keys; the
 rest are on `,` and `.` and the web remote.
 
 | Key | Scene | What it shows |
@@ -49,13 +49,12 @@ rest are on `,` and `.` and the web remote.
 | 6 | Game of Life | Life on a globe with no edges, under three sets of rules and in eight colour themes. Fresh soup drops in whenever it settles down |
 | 7 | Moon tonight | The Moon filling the dome, lit to tonight's real phase, with its age and the next full and new moon written across the equator. No internet needed |
 | 8 | Orbit watch | The live Earth with real day and night, the ISS and its next orbit, a few hundred satellites, and the last day's earthquakes |
-| 9 | Groovy | 60s and 70s patterns: op art, psychedelic swirl, 70s wallpaper, flower power, lava lamp, mood ring, mirror ball, liquid light, glam stars |
+| 9 | Groovy | 60s and 70s patterns: op art, psychedelic swirl, flower power, lava lamp, liquid light, tie-dye, paisley, spirograph |
 | 0 | Sci-fi | Hologram globe, radar sweep (with real satellites if the orbit feed is running), hyperspace, planet scan, reactor core, ship's computer |
-| , and . | Groovy 2 | Smileys and flower power: bouncing smileys, daisy chain, flower wallpaper, blooming garden, sunshine face, peace and petals, smiley rain, flower kaleidoscope, rainbow face, hippie bus |
+| , and . | Computers | Classic computing: a front panel of switches and lamps with a program being toggled in, oscilloscope figures, a hex dump spiralling out, a boot screen, a circuit board, a Nixie tube clock, a one-line cellular automaton, and a packet network round the globe |
 | , and . | Hypnotic | Tesseract, quasicrystal, moire, Fibonacci globe, Truchet maze, hypno spiral, tunnel, pendulum, breathing hexagons, geodesic sphere |
 | , and . | Sports balls | The globe as a ball, rolling: football, basketball, tennis, cricket, baseball, volleyball, golf, pool 8-ball, beach ball, bowling ball |
 | , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, starfield, pixel planet, Rim Pong, Rim defender, radial falling blocks, 16-colour plasma, tape loading, pixel fire. The three games play themselves across the whole dome |
-| , and . | Seasons | Fireworks, Christmas bauble, snowfall, fairy lights, pumpkin, spooky night, Easter egg, spring blossom, New Year countdown, autumn leaves. Can pick the style from today's date |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -70,9 +69,8 @@ See the [gallery](#gallery) for each scene on the globe.
 | ![Death Star](docs/screenshots/deathstar.jpg)<br>Death Star | ![Planet](docs/screenshots/planet.jpg)<br>Planet | ![Plasma](docs/screenshots/plasma.jpg)<br>Plasma |
 | ![Julia](docs/screenshots/julia.jpg)<br>Julia | ![Kaleidoscope](docs/screenshots/kaleido.jpg)<br>Kaleidoscope | ![Game of Life](docs/screenshots/life.jpg)<br>Game of Life |
 | ![Moon tonight](docs/screenshots/moon.jpg)<br>Moon tonight | ![Orbit watch](docs/screenshots/orbit.jpg)<br>Orbit watch | ![Groovy](docs/screenshots/groovy.jpg)<br>Groovy |
-| ![Sci-fi](docs/screenshots/scifi.jpg)<br>Sci-fi | ![Groovy 2](docs/screenshots/groovy2.jpg)<br>Groovy 2 | ![Hypnotic](docs/screenshots/hypno.jpg)<br>Hypnotic |
-| ![Sports balls](docs/screenshots/balls.jpg)<br>Sports balls | ![8-bit retro](docs/screenshots/retro.jpg)<br>8-bit retro | ![Seasons](docs/screenshots/seasons.jpg)<br>Seasons |
-| ![Calibration grid](docs/screenshots/calibration.jpg)<br>Lens grid | | |
+| ![Sci-fi](docs/screenshots/scifi.jpg)<br>Sci-fi | ![Hypnotic](docs/screenshots/hypno.jpg)<br>Hypnotic | ![Sports balls](docs/screenshots/balls.jpg)<br>Sports balls |
+| ![8-bit retro](docs/screenshots/retro.jpg)<br>8-bit retro | ![Calibration grid](docs/screenshots/calibration.jpg)<br>Lens grid | |
 
 Photos of the real globe, taken in a dark room with the phone's exposure
 turned down a little so the colours don't burn out.
@@ -94,8 +92,8 @@ hemisphere/
   scenes/plasma.c          3   scenes/orbit.c    8
   scenes/julia.c           4   scenes/groovy.c   9
   scenes/kaleido.c         5   scenes/scifi.c    0
-  scenes/groovy2.c         the rest are on , and .:
-  scenes/hypno.c, balls.c, retro.c, seasons.c
+  scenes/computers.c       the rest are on , and .:
+  scenes/hypno.c, balls.c, retro.c
   third_party/stb_image.h  JPEG/PNG loader (public domain, single header)
   textures/                planet and moon maps go here
   data/                    live data from the orbit feed (created by it)
@@ -246,11 +244,10 @@ Settings are kept in files next to the program, in groups:
 | `orbit.cfg` | Orbit watch | Orbit watch (8) | View, home, what to show |
 | `groovy.cfg` | Groovy | Groovy (9) | Style, speed, scale |
 | `scifi.cfg` | Sci-fi | Sci-fi (0) | Style, speed, scale, radar range and centre |
-| `groovy2.cfg` | Groovy 2 | Groovy 2 (, and .) | Style, colours, speed, scale, wink |
+| `computers.cfg` | Computers | Computers (, and .) | Style, speed, phosphor colour, text |
 | `hypno.cfg` | Hypnotic | Hypnotic (, and .) | Style, colours, speed, scale |
 | `balls.cfg` | Sports balls | Sports balls (, and .) | Ball, roll, shine |
 | `retro.cfg` | 8-bit retro | 8-bit retro (, and .) | Style, speed, pixel size, pixel gaps |
-| `seasons.cfg` | Seasons | Seasons (, and .) | Style, auto by date, speed, scale |
 
 In a scene, TAB steps through the six view settings first (`pitch`,
 `tilt`, `wobble`, `rev_secs`, `res`, `view_dist`) and then that scene's
@@ -289,6 +286,10 @@ are drawn square to the dome, ignoring the view settings.
 |---------|--------------|
 | `hull` | Brightness of the solid hull. 0 gives the original wireframe-only look |
 | `panels` | Contrast of the hull plating |
+| `panel_h` | Height of the hull plates in degrees (3 by default) |
+| `panel_w` | Width of the hull plates in degrees at the equator (3 by default); plates keep this width towards the poles |
+| `seam_y` | A heavier seam every this many bands of plates (4 by default, 0 for none) |
+| `seam_x` | A heavier seam every this many plates along a band (6 by default, 0 for none) |
 | `lines` | Brightness of the green grid. 0 gives a solid model with no grid |
 | `trail` | Strength of the faint motion trail (0 for off) |
 | `dot_size` | Size of each dot in pixels |
@@ -361,21 +362,32 @@ to M6, red above; the last six hours are brighter. Home starts at Greenwich;
 set `home_lat` and `home_lon` to your own location.
 
 **Groovy settings:** `style` (**N** steps through them: 0 op art, 1
-psychedelic swirl, 2 70s wallpaper, 3 flower power, 4 lava lamp, 5 mood ring,
-6 mirror ball, 7 liquid light, 8 glam stars), `speed`, `scale` (bigger gives a
-finer pattern), `bright`. The patterns turn with the globe, except the lava
-lamp, which stays facing you.
+psychedelic swirl, 2 flower power, 3 lava lamp, 4 liquid light, 5 tie-dye,
+6 paisley, 7 spirograph), `speed`, `scale` (bigger gives a finer pattern),
+`bright`. Tie-dye winds five dyes into a spiral round a fold; every 40
+seconds a new fold is dyed and spreads over the old one. The spirograph
+draws four gear patterns out to the rim, showing the ring and the rolling
+gear as it goes, then fades and starts a fresh sheet. The patterns turn
+with the globe, except the lava lamp and spirograph, which face you. (The
+style numbers changed in October 2026, when 70s wallpaper, mood ring,
+mirror ball and glam stars were dropped; an old `groovy.cfg` just opens on
+a different style.)
 
-**Groovy 2 settings:** `style` (**N** steps through them: 0 smiley
-bounce, 1 daisy chain, 2 flower wallpaper, 3 blooming garden, 4 sunshine
-face, 5 peace and petals, 6 smiley rain, 7 flower kaleidoscope, 8 rainbow
-face, 9 hippie bus), `theme` (**M**: 0 each style's own colours, 1 to 8 the
-shared themes), `speed`, `scale` (bigger gives more, smaller shapes),
-`bright`, `wink` (how often the smileys wink and blink; 0 stops it). It
-has no number key: press `,` or `.` to reach it, or pick it on the web
-remote. The sunshine face, smiley rain and rainbow face stay facing you; the
-rest turn with the globe. (Earlier versions called it Groovy Baby; its saved
-`groovybaby.cfg` is still read if `groovy2.cfg` is missing.)
+**Computers settings:** `style` (**N**: 0 front panel, 1 oscilloscope, 2
+hex dump, 3 boot screen, 4 circuit board, 5 Nixie clock, 6 cellular rule,
+7 packet network), `speed`, `phosphor` (**M**: the screen colour of the
+oscilloscope, hex dump and boot screen: 0 green, 1 amber, 2 white), `text`
+(labels and readouts), `bright`. It has no number key: press `,` or `.`
+to reach it, or pick it on the web remote. The front panel's switches are
+toggled one at a time to load an address and deposit a short made-up
+program, word by word, which then runs with the lamps flickering before it
+halts and starts again. The Nixie clock shows the Pi's local time across
+the middle, the date above and a tenths counter below, and a crown of
+small tubes round the rim; for the first two seconds of every minute every
+tube rolls through its digits. The cellular rule prints one generation of
+a one-line automaton per ring, newest at the rim, cycling through rules
+30, 90, 110, 150, 45, 73, 105 and 22 every 26 seconds. Only the packet
+network turns with the globe.
 
 **Hypnotic settings:** `style` (**N**: 0 tesseract, 1 quasicrystal, 2 moire,
 3 Fibonacci globe, 4 Truchet maze, 5 hypno spiral, 6 tunnel, 7 pendulum, 8
@@ -414,18 +426,9 @@ fall inwards towards the centre and a full ring clears. Its robot tries
 every sector and turn for each piece and picks the flattest result. The
 aliens, ship and pictures are made up for this program.
 
-**Seasons settings:** `style` (**N**: 0 fireworks, 1 Christmas bauble, 2
-snowfall, 3 fairy lights, 4 pumpkin, 5 spooky night, 6 Easter egg, 7 spring
-blossom, 8 New Year countdown, 9 autumn leaves), `auto` (1 picks the style
-from today's date; pressing N turns it off), `speed`, `scale`, `bright`.
-With `auto` on it shows fireworks in early November, the pumpkin and spooky
-night in Halloween week, Christmas styles in December, the countdown on 31
-December and 1 January, snow in January and February, blossom and Easter
-in spring, and leaves in autumn.
-
 **Sci-fi settings:** `style` (**N** steps through them: 0 hologram globe,
 1 radar sweep, 2 hyperspace, 3 planet scan, 4 reactor core, 5 ship's
-computer), `speed`, `scale`, `range` (radar range in km), `home_lat` and
+computer, with five rings of hex readouts out to the rim), `speed`, `scale`, `range` (radar range in km), `home_lat` and
 `home_lon` (the radar's centre), `text` (readouts on or off), `bright`.
 The radar shows the real satellites passing within range of home when
 `orbitfeed` is running (north up, east right), and simulated contacts
@@ -676,8 +679,8 @@ don't have this problem.
 | P / H | Print all settings / the key list |
 | SPACE | Pause rotation |
 | UP / DOWN | Faster / slower rotation |
-| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (groovy, sci-fi, Groovy 2, Hypnotic, Sports balls, 8-bit retro, Seasons), map (planet) or view (orbit watch). Death Star: denser dots |
-| M | Groovy 2 and Hypnotic: next colours. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: sparser dots |
+| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro), map (planet) or view (orbit watch). Death Star: denser dots |
+| M | Hypnotic: next colours. Computers: phosphor colour. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: sparser dots |
 | C | Life: reseed |
 | I / K | Death Star: dish shallower / deeper |
 | ESC | Quit |
@@ -789,7 +792,7 @@ These environment variables are for testing and previewing:
   the planet scan were too slow on the Pi 3 because they stacked noise for
   every pixel. All four now use sine waves. Julia's `iter` now starts at
   32 rather than 64, and the Death Star's motion trail is one faint copy
-  rather than two. Groovy 2's styles are each a separate small shader,
+  rather than two. The newer scenes give each style its own small shader,
   so only the one on screen costs anything. If another style stutters, lower `res`, or rebuild its pattern
   from sine waves the same way.
 * **The original two-pass design.** Version one filmed the model with a
