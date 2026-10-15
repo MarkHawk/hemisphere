@@ -1050,6 +1050,37 @@ static void ctl_state(Buf *o, int mode, int paused)
     bput(o, "]}");
 }
 
+/* For the web remote's playlist: every scene, with the setting that picks
+ * what it shows (style, else view, else theme) and that setting's range
+ * and hint, so the remote can name the choices without switching scene. */
+static Param *scene_pick(Scene *sc)
+{
+    static const char *NAMES[3] = { "style", "view", "theme" };
+    for (int k = 0; k < 3; k++)
+        for (int i = 0; i < sc->nparams; i++)
+            if (!strcmp(sc->params[i].name, NAMES[k])) return &sc->params[i];
+    return NULL;
+}
+
+static void ctl_catalog(Buf *o)
+{
+    bput(o, "{\"scenes\":[");
+    for (int i = 0; i < g_nscenes; i++) {
+        Param *p = scene_pick(g_scenes[i]);
+        if (i) bput(o, ",");
+        bput(o, "{\"name\":");
+        bstr(o, g_scenes[i]->name);
+        if (p) {
+            bput(o, ",\"pick\":");
+            bstr(o, p->name);
+            bput(o, ",\"value\":%g,\"lo\":%g,\"hi\":%g,\"hint\":", *p->v, p->lo, p->hi);
+            bstr(o, p->hint);
+        }
+        bput(o, "}");
+    }
+    bput(o, "]}");
+}
+
 static SDL_Keycode ctl_keycode(const char *k)
 {
     if (!strcmp(k, "space")) return SDLK_SPACE;
@@ -1079,10 +1110,26 @@ static void ctl_poll(int mode, int paused)
         in[strcspn(in, "\r\n")] = 0;
         static char out[32768];
         Buf o = { out, 0, sizeof out };
-        char a[64] = "", b[64] = "";
-        int args = sscanf(in, "%*s %63s %63s", a, b);
+        char a[64] = "", b[64] = "", c[64] = "";
+        int args = sscanf(in, "%*s %63s %63s %63s", a, b, c);
         if (!strncmp(in, "state", 5)) {
             ctl_state(&o, mode, paused);
+        } else if (!strncmp(in, "catalog", 7)) {
+            ctl_catalog(&o);
+        } else if (!strncmp(in, "sset ", 5) && args >= 3) {
+            /* sset <scene> <setting> <value>: set any scene's setting, on
+             * screen or not (the playlist sets the style, then switches) */
+            int m = atoi(a), done = 0;
+            if (m >= 0 && m < g_nscenes)
+                for (int i = 0; i < g_scenes[m]->nparams && !done; i++) {
+                    Param *p = &g_scenes[m]->params[i];
+                    if (strcmp(p->name, b)) continue;
+                    float v = (float)atof(c);
+                    *p->v = v < p->lo ? p->lo : v > p->hi ? p->hi : v;
+                    if (p->regen && g_scenes[m]->rebuild) g_scenes[m]->rebuild();
+                    done = 1;
+                }
+            if (done) bput(&o, "ok"); else bput(&o, "error: no setting %s in scene %s", b, a);
         } else if (!strncmp(in, "scene ", 6) && args >= 1) {
             int m = atoi(a);
             if (m >= -2 && m < g_nscenes) { g_ctl_mode = m; bput(&o, "ok"); }

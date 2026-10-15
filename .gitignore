@@ -21,13 +21,16 @@ life.cfg
 moon.cfg
 orbit.cfg
 groovy.cfg
-groovy2.cfg
 hypno.cfg
 balls.cfg
 retro.cfg
-seasons.cfg
 groovybaby.cfg
 scifi.cfg
+computers.cfg
+screen.cfg
+
+# the web remote's playlist, made on the Pi
+playlist.json
 
 # Windows build and logs
 /hemisphere.exe

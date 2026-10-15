@@ -48,6 +48,25 @@
     font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
   .toast.show { opacity: 1; }
   .toast.good { background: #13291f; color: var(--good); border-color: #245a3f; }
+  .pl-status { color: var(--dim); font-size: 13px; margin: -2px 0 10px; min-height: 18px; }
+  .pl-status b { color: var(--text); font-weight: 600; }
+  .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 10px; }
+  .opts label, .add label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--dim); }
+  select, input[type=number] { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 8px; min-height: 42px; width: 100%; }
+  .items { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .item { display: grid; grid-template-columns: 26px 1fr 58px auto; gap: 6px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+  .item.cur { border-color: var(--accent2); }
+  .item.off { opacity: 0.5; }
+  .item input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
+  .item .what { font-size: 14px; }
+  .item .what select { min-height: 34px; padding: 4px 6px; margin-top: 3px; font-size: 13px; }
+  .item input[type=number] { min-height: 34px; padding: 4px 6px; font-size: 13px; }
+  .item .mv { display: flex; gap: 4px; }
+  .item .mv button { min-height: 34px; padding: 4px 7px; text-align: center; }
+  .add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .empty { color: var(--dim); font-size: 13px; padding: 10px 2px; }
   .offline { color: var(--dim); background: var(--panel); border: 1px dashed var(--line);
     border-radius: 10px; padding: 14px; margin-top: 18px; display: none; }
 </style>
@@ -81,6 +100,36 @@
     <button data-key=".">Next ▶</button>
     <button data-key="down">Slower</button>
     <button data-key="up">Faster</button>
+  </div>
+
+  <h2>Playlist</h2>
+  <div class="pl-status" id="pl-status">Loading…</div>
+  <div class="row">
+    <button class="primary" id="pl-run">Start playlist</button>
+    <button id="pl-prev">◀ Back</button>
+    <button id="pl-next">Skip ▶</button>
+  </div>
+  <div class="opts">
+    <label>Order
+      <select id="pl-order">
+        <option value="in_turn">Each in turn</option>
+        <option value="shuffle">Shuffle</option>
+        <option value="random">Random</option>
+      </select></label>
+    <label>Seconds each <input type="number" id="pl-seconds" min="5" step="5"></label>
+    <label>Vary by ± seconds <input type="number" id="pl-vary" min="0" step="5"></label>
+    <label>Pause after I pick (s) <input type="number" id="pl-hold" min="0" step="30"></label>
+  </div>
+  <div class="items" id="pl-items"></div>
+  <div class="add">
+    <label>Scene <select id="pl-scene"></select></label>
+    <label>Style <select id="pl-pick"></select></label>
+  </div>
+  <div class="row small" style="margin-top:8px">
+    <button id="pl-add">Add</button>
+    <button id="pl-add-scene">Add all its styles</button>
+    <button id="pl-add-all">Add everything</button>
+    <button id="pl-clear">Clear list</button>
   </div>
 
   <h2 id="scene-h">Scene settings</h2>
@@ -236,8 +285,152 @@ document.addEventListener("click", async (e) => {
   setTimeout(refresh, 150);
 });
 
+// ---- playlist ----------------------------------------------------
+let pl = null, cat = [], plSaveTimer = null;
+
+function pickChoices(sc) {           // [[value, label], ...] for a catalog scene
+  if (!sc || !sc.pick) return [];
+  const names = {}, re = /(?:^|,\s*)(\d+)\s*=?\s*([A-Za-z][^,(]*)/g;
+  let x;
+  while ((x = re.exec(sc.hint || ""))) names[x[1]] = x[2].trim();
+  const out = [];
+  for (let v = sc.lo; v <= sc.hi; v++) out.push([v, names[v] ? `${v} · ${names[v]}` : `${sc.pick} ${v}`]);
+  return out;
+}
+const sceneName = (i) => cat[i] ? cat[i].name.charAt(0) + cat[i].name.slice(1).toLowerCase() : `Scene ${i}`;
+
+function fillPick(sel, sc, value) {
+  sel.innerHTML = "";
+  const keep = document.createElement("option");
+  keep.value = ""; keep.textContent = sc && sc.pick ? "as it is" : "(one look)";
+  sel.appendChild(keep);
+  pickChoices(sc).forEach(([v, t]) => {
+    const o = document.createElement("option"); o.value = v; o.textContent = t; sel.appendChild(o);
+  });
+  sel.value = value === null || value === undefined ? "" : String(value);
+}
+
+function plSave() {
+  clearTimeout(plSaveTimer);
+  plSaveTimer = setTimeout(async () => {
+    try {
+      const r = await fetch("/api/playlist", { method: "POST", headers: { "Content-Type": "application/json" },
+                                               body: JSON.stringify(pl) });
+      const j = await r.json();
+      if (!j.ok) toast(j.error || "Couldn't save the playlist");
+      else plStatus(j.status);
+    } catch (e) { toast("Can't reach the remote"); }
+  }, 300);
+}
+
+function plStatus(st) {
+  const n = pl.items.filter((it) => it.on).length;
+  $("pl-run").textContent = pl.enabled ? "Stop playlist" : "Start playlist";
+  $("pl-run").classList.toggle("save", pl.enabled);
+  let msg;
+  if (!pl.enabled) msg = n ? `Stopped · ${n} item${n === 1 ? "" : "s"} ready` : "Add some scenes, then start it";
+  else if (st.held > 0) msg = `Paused for ${st.held} s because you picked something · then on with the list`;
+  else msg = `Playing <b></b>` + (st.next_in !== null ? ` · next in ${st.next_in} s` : "");
+  $("pl-status").innerHTML = msg;
+  const b = $("pl-status").querySelector("b");
+  if (b) b.textContent = st.current || "…";
+  [...$("pl-items").children].forEach((row, i) => row.classList && row.classList.toggle("cur", pl.enabled && i === st.index));
+}
+
+function plRender() {
+  $("pl-order").value = pl.order;
+  $("pl-seconds").value = pl.seconds; $("pl-vary").value = pl.vary; $("pl-hold").value = pl.hold;
+  const box = $("pl-items");
+  box.innerHTML = "";
+  if (!pl.items.length) { box.innerHTML = `<div class="empty">The list is empty.</div>`; return; }
+  pl.items.forEach((it, i) => {
+    const row = document.createElement("div");
+    row.className = "item" + (it.on ? "" : " off");
+    row.innerHTML = `<input type="checkbox" title="Include"><div class="what"><div class="nm"></div><select></select></div>
+      <input type="number" min="0" step="5" placeholder="default" title="Seconds (blank = default)">
+      <div class="mv"><button data-mv="-1" title="Up">▲</button><button data-mv="1" title="Down">▼</button><button data-del title="Remove">✕</button></div>`;
+    const cb = row.querySelector("input[type=checkbox]"), sel = row.querySelector("select"),
+          secs = row.querySelector("input[type=number]");
+    cb.checked = it.on;
+    row.querySelector(".nm").textContent = sceneName(it.scene);
+    fillPick(sel, cat[it.scene], it.pick);
+    if (!(cat[it.scene] && cat[it.scene].pick)) sel.style.display = "none";
+    secs.value = it.seconds ? it.seconds : "";
+    cb.addEventListener("change", () => { it.on = cb.checked; row.classList.toggle("off", !it.on); plSave(); });
+    sel.addEventListener("change", () => { it.pick = sel.value === "" ? null : Number(sel.value); plSave(); });
+    secs.addEventListener("change", () => { it.seconds = Number(secs.value) || 0; plSave(); });
+    row.querySelectorAll("[data-mv]").forEach((b) => b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const j = i + Number(b.dataset.mv);
+      if (j < 0 || j >= pl.items.length) return;
+      [pl.items[i], pl.items[j]] = [pl.items[j], pl.items[i]];
+      plRender(); plSave();
+    }));
+    row.querySelector("[data-del]").addEventListener("click", (e) => {
+      e.stopPropagation(); pl.items.splice(i, 1); plRender(); plSave();
+    });
+    box.appendChild(row);
+  });
+}
+
+function addItems(scene, picks) {
+  picks.forEach((p) => pl.items.push({ scene, pick: p, seconds: 0, on: true }));
+  plRender(); plSave();
+}
+function allPicks(i) { const sc = cat[i]; return sc && sc.pick ? pickChoices(sc).map(([v]) => v) : [null]; }
+
+async function plLoad() {
+  try {
+    const c = await (await fetch("/api/catalog")).json();
+    if (c.ok) cat = c.scenes;
+  } catch (e) { /* hemisphere not running yet */ }
+  const j = await (await fetch("/api/playlist")).json();
+  pl = j.playlist;
+  const ss = $("pl-scene");
+  ss.innerHTML = "";
+  cat.forEach((sc, i) => { const o = document.createElement("option"); o.value = i; o.textContent = sceneName(i); ss.appendChild(o); });
+  fillPick($("pl-pick"), cat[0], null);
+  plRender(); plStatus(j.status);
+}
+
+$("pl-scene").addEventListener("change", () => fillPick($("pl-pick"), cat[Number($("pl-scene").value)], null));
+$("pl-order").addEventListener("change", () => { pl.order = $("pl-order").value; plSave(); });
+["seconds", "vary", "hold"].forEach((k) => $("pl-" + k).addEventListener("change", () => {
+  pl[k] = Number($("pl-" + k).value) || 0; plSave();
+}));
+
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("button");
+  if (!b || !b.id || !b.id.startsWith("pl-")) return;
+  e.stopImmediatePropagation();
+  if (b.id === "pl-run") { pl.enabled = !pl.enabled; plSave(); plStatus({ held: 0, next_in: null, index: -1 }); }
+  if (b.id === "pl-next" || b.id === "pl-prev") {
+    await fetch("/api/playlist/skip", { method: "POST", headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ step: b.id === "pl-next" ? 1 : -1 }) });
+    setTimeout(refresh, 200);
+  }
+  if (b.id === "pl-add") {
+    const v = $("pl-pick").value;
+    addItems(Number($("pl-scene").value), [v === "" ? null : Number(v)]);
+  }
+  if (b.id === "pl-add-scene") { const i = Number($("pl-scene").value); addItems(i, allPicks(i)); }
+  if (b.id === "pl-add-all") {
+    cat.forEach((sc, i) => allPicks(i).forEach((p) => pl.items.push({ scene: i, pick: p, seconds: 0, on: true })));
+    plRender(); plSave();
+  }
+  if (b.id === "pl-clear" && pl.items.length && confirm("Clear the whole playlist?")) { pl.items = []; plRender(); plSave(); }
+}, true);
+
+async function plPoll() {
+  if (!pl) return;
+  try { const j = await (await fetch("/api/playlist")).json(); plStatus(j.status); } catch (e) { /* offline */ }
+  if (!cat.length) plLoad();
+}
+
 refresh();
 setInterval(refresh, 2000);
+plLoad();
+setInterval(plPoll, 2000);
 </script>
 </body>
 </html>
