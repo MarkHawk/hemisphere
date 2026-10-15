@@ -7,23 +7,21 @@
  *                     deposits it word by word, then runs it
  *   1 oscilloscope    green phosphor Lissajous figures and roses in X-Y
  *                     mode, with a glowing trace that fades behind the beam
- *   2 hex dump        memory spiralling out from the centre, a line at a
- *                     time, with the odd readable string lighting up
- *   3 boot screen     a power-on self test typed round the dome: memory
- *                     count, device checks, READY, then the screen
- *                     collapses to a dot and it boots again
- *   4 circuit board   copper traces grow from a central chip to the rim,
+ *   2 code listing    an assembler listing scrolling up a big screen, in
+ *                     colour, with a bar following the line being run
+ *   3 circuit board   copper traces grow from a central chip to the rim,
  *                     then signals pulse along them
- *   5 nixie clock     the time in big Nixie tubes across the middle, the
- *                     date and a counter round a ring, and a crown of small
- *                     tubes round the rim. On the minute they all roll
- *   6 cellular rule   a one-line automaton (rule 30, 90, 110...) printed
- *                     ring by ring from the centre out to the rim
- *   7 packet network  nodes round the globe, linked, with packets hopping
+ *   4 core memory     the globe threaded with ferrite rings, waves of
+ *                     reads and writes flipping them
+ *   5 packet network  nodes round the globe, linked, with packets hopping
  *                     from node to node and nodes flashing as they arrive
+ *   6 blinkenlights   the globe covered in panels of lamps, each running
+ *                     a counter, a shift register, a scanner or a flicker
  *
- * Everything but the packet network is fixed to the dome, facing you; the
- * network turns with the globe. All original designs.
+ * Core memory, blinkenlights and the packet network turn with the globe;
+ * the rest face you. All original designs. For speed on the Pi 3, big
+ * things are drawn by the surface shader and dots are kept few; the
+ * listing's text is drawn by the shader from a font texture.
  */
 #include "../dome/dome.h"
 #include "../dome/font5x7.h"
@@ -33,21 +31,22 @@
 #include <string.h>
 #include <time.h>
 
-#define NSTYLE 8
+#define NSTYLE 7
 static const char *NAMES[NSTYLE] = {
-    "front panel", "oscilloscope", "hex dump", "boot screen",
-    "circuit board", "nixie clock", "cellular rule", "packet network"
+    "front panel", "oscilloscope", "code listing", "circuit board",
+    "core memory", "packet network", "blinkenlights"
 };
 
 static struct { float style, speed, phosphor, text, bright; } L =
     { 0.0f, 1.0f, 0.0f, 1.0f, 1.0f };
 
 static Param P[] = {
-    { "style",    &L.style,    1.0f, 0.0f, 7.0f, 0,
-      "0 front panel, 1 oscilloscope, 2 hex dump, 3 boot screen, 4 circuit board, 5 nixie, 6 cellular rule, 7 network (N)" },
+    { "style",    &L.style,    1.0f, 0.0f, 6.0f, 0,
+      "0 front panel, 1 oscilloscope, 2 code listing, 3 circuit board, 4 core memory, "
+      "5 network, 6 blinkenlights (N)" },
     { "speed",    &L.speed,    0.1f, 0.0f, 4.0f, 0, "speed of the animation" },
     { "phosphor", &L.phosphor, 1.0f, 0.0f, 2.0f, 0,
-      "screen colour for the oscilloscope, hex dump and boot screen: 0 green, 1 amber, 2 white (M)" },
+      "screen colour for the oscilloscope and code listing: 0 green, 1 amber, 2 white (M)" },
     { "text",     &L.text,     1.0f, 0.0f, 1.0f, 0, "labels and readouts: 0 off, 1 on" },
     { "bright",   &L.bright,   0.05f, 0.2f, 2.0f, 0, "brightness" },
 };
@@ -122,13 +121,6 @@ static void arc_text(DomePoints *p, const char *s, int n, float radius_deg, floa
                     }
             }
     }
-}
-
-/* the tallest text (degrees) that fits n characters once round a ring */
-static float fit_height(float radius_deg, int n, float most)
-{
-    float h = 2.0f * DOME_PI * 0.92f * sinf(DEG2RAD(radius_deg)) * 7.0f / (6.0f * n);
-    return fminf(most, h * 180.0f / DOME_PI);
 }
 
 /* Shared GLSL: a = angle from the dome centre in degrees, u = 0..1 round
@@ -378,178 +370,176 @@ static void scope_build(void)
 }
 
 /* ================================================================ */
-/* 2: hex dump                                                        */
+/* Shader text (code listing): the 5x7 font in a texture, and a      */
+/* screenful of character codes in another, so a whole page of text  */
+/* costs the Pi a couple of texture reads per pixel, not thousands   */
+/* of dots.                                                           */
 /* ================================================================ */
-static const char DARKSCREEN[] =
-    U
-    "vec4 surface(vec3 dir, vec3 view){\n"
-    POLAR
-    "  vec3 col = vec3(0.008, 0.010, 0.012) + u_ph * 0.05 * exp(-a * 0.06);\n"
-    "  col += u_ph * 0.015 * smoothstep(0.3, 0.0, abs(fract(a / 4.4) - 0.5));\n"
-    "  col *= 0.85 + 0.15 * sin(view.y * 500.0);\n"                       /* scan lines */
-    "  return vec4(col * u_bright * u_a, 1.0);\n"
-    "}\n";
+#define GW 48
+#define GH 40
+#define TEXT_GLSL \
+    "uniform sampler2D u_font, u_grid;\n" \
+    "float glyph(float code, vec2 f){\n" \
+    "  float idx = code - 32.0;\n" \
+    "  vec2 g = vec2(mod(idx, 16.0), floor(idx / 16.0));\n" \
+    "  vec2 px = floor(clamp(f, 0.0, 0.999) * vec2(6.0, 8.0));\n" \
+    "  return texture2D(u_font, (g * vec2(6.0, 8.0) + px + 0.5) / vec2(96.0, 48.0)).r;\n" \
+    "}\n" \
+    "float textcell(vec2 c){\n" \
+    "  if (c.x < 0.0 || c.y < 0.0 || c.x >= 48.0 || c.y >= 40.0) return 0.0;\n" \
+    "  vec2 i = floor(c);\n" \
+    "  float code = floor(texture2D(u_grid, (i + 0.5) / vec2(48.0, 40.0)).r * 255.0 + 0.5);\n" \
+    "  if (code < 32.5 || code > 126.5) return 0.0;\n" \
+    "  return glyph(code, fract(c));\n" \
+    "}\n"
 
-#define HEX_RINGS 19
-#define HEX_BYTES 8
-static char  g_hex[HEX_RINGS][64];
-static int   g_hexhi[HEX_RINGS];       /* 1 = a readable string */
-static int   g_hexaddr, g_hexmsg = -1, g_hexmsgpos;
-static float g_hexstep;
-static int   g_hexsteps, g_hex_built = -1;
+static GLuint g_font_tex, g_grid_tex;
+static unsigned char g_grid[GH][GW];
+static int g_grid_dirty = 1;
 
-static const char *MSGS[] = {
-    "HEMISPHERE ", "READY. ", "HELLO, WORLD! ", "SYSTEM OK ", "BOOT DISK 1 ",
-    "LOAD *,8,1 ", "PRESS PLAY ON TAPE ", "*** STOP *** ", "64K RAM ", "LISTENING... ",
-};
-#define NMSG ((int)(sizeof MSGS / sizeof MSGS[0]))
-
-static void hex_newline(void)
+static GLuint make_tex(int linear)
 {
-    unsigned char b[HEX_BYTES];
-    int hi = 0;
-    if (g_hexmsg < 0 && rand() % 9 == 0) { g_hexmsg = rand() % NMSG; g_hexmsgpos = 0; }
-    for (int i = 0; i < HEX_BYTES; i++) {
-        if (g_hexmsg >= 0) {
-            const char *m = MSGS[g_hexmsg];
-            b[i] = (unsigned char)m[g_hexmsgpos++];
-            hi = 1;
-            if (!m[g_hexmsgpos]) g_hexmsg = -1;
-        } else {
-            int r = rand() % 10;
-            b[i] = r < 3 ? 0 : r < 4 ? 0xff : (unsigned char)(rand() & 255);
-        }
-    }
-    memmove(g_hex[1], g_hex[0], sizeof g_hex[0] * (HEX_RINGS - 1));
-    memmove(g_hexhi + 1, g_hexhi, sizeof g_hexhi[0] * (HEX_RINGS - 1));
-    char *o = g_hex[0];
-    o += sprintf(o, "%06X ", g_hexaddr & 0xffffff);
-    for (int i = 0; i < HEX_BYTES; i++) o += sprintf(o, "%02X ", b[i]);
-    *o++ = ' ';
-    for (int i = 0; i < HEX_BYTES; i++) *o++ = (b[i] >= 32 && b[i] < 127) ? (char)b[i] : '.';
-    *o = 0;
-    g_hexhi[0] = hi;
-    g_hexaddr += HEX_BYTES;
-    g_hexsteps++;
+    GLuint t;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    return t;
 }
 
-static void hex_build(void)
+static void font_init(void)
 {
-    float col[3];
-    phosphor(col);
-    dome_points_clear(&g_pts);
-    for (int j = 0; j < HEX_RINGS; j++) {
-        if (!g_hex[j][0]) continue;
-        float r = 5.5f + j * 4.45f;
-        int n = (int)strlen(g_hex[j]);
-        float h = fit_height(r, n, 3.4f);
-        /* each line sits a little further round than the one inside it,
-         * so the dump winds out in a spiral */
-        float centre = -90.0f + (g_hexsteps - j) * 23.0f;
-        float a = 0.45f + 0.55f * (float)j / HEX_RINGS;
-        if (g_hexhi[j])
-            arc_text(&g_pts, g_hex[j], n, r, centre, h, h > 2.0f ? 2 : 1, 1.0f, 1.0f, 0.95f, 1.0f);
-        else
-            arc_text(&g_pts, g_hex[j], n, r, centre, h, h > 2.0f ? 2 : 1, col[0], col[1], col[2], a);
-    }
-    dome_points_upload(&g_pts);
+    static unsigned char px[48][96];
+    for (int c = 0; c < 95; c++)
+        for (int row = 0; row < 7; row++)
+            for (int col = 0; col < 5; col++)
+                if ((FONT5X7[c][row] >> (4 - col)) & 1) px[(c / 16) * 8 + row][(c % 16) * 6 + col] = 255;
+    g_font_tex = make_tex(0);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 96, 48, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, px);
+    g_grid_tex = make_tex(0);
+}
+
+static void grid_put(int col, int row, const char *s)
+{
+    if (row < 0 || row >= GH) return;
+    for (int i = 0; s[i] && col + i < GW; i++) if (col + i >= 0) g_grid[row][col + i] = (unsigned char)s[i];
+    g_grid_dirty = 1;
+}
+
+static void grid_upload(void)
+{
+    if (!g_grid_dirty) return;
+    glBindTexture(GL_TEXTURE_2D, g_grid_tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, GW, GH, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, g_grid);
+    g_grid_dirty = 0;
 }
 
 /* ================================================================ */
-/* 3: boot screen                                                     */
+/* 2: code listing                                                    */
 /* ================================================================ */
-/* u_a = screen brightness (warm-up), u_b = collapse: 0 normal, rising to
- * 1 as the picture shrinks to a dot */
-static const char CRT[] =
-    U
+/* An assembler listing scrolling up a big screen: 44 columns by 30
+ * rows over the middle of the dome (address, bytes, instruction,
+ * operand, comment, each in its own colour), a bar following the line
+ * being run, and a title and status line above and below. */
+#define LROWS 32
+static const char LISTING[] =
+    U TEXT_GLSL
+    "uniform float u_scroll;\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     POLAR
-    "  vec3 col = vec3(0.015, 0.016, 0.02) + u_ph * 0.035 * exp(-a * 0.03);\n"
-    "  col *= 0.8 + 0.2 * sin(view.y * 520.0);\n"
-    "  col *= u_a;\n"
-    "  float dot_r = mix(90.0, 0.6, u_b);\n"                               /* switching off */
-    "  float spot = u_b > 0.0 ? smoothstep(dot_r, dot_r * 0.4, a) * (0.4 + 2.0 * u_b) : 0.0;\n"
-    "  col = u_b > 0.0 ? col * (1.0 - u_b) + vec3(0.9, 0.95, 1.0) * spot : col;\n"
+    "  vec3 col = vec3(0.008, 0.010, 0.02) + u_ph * 0.03 * exp(-a * 0.03);\n"
+    "  float inside = step(abs(fl.x), 0.704) * step(abs(fl.y), 0.68);\n"
+    "  vec2 c = vec2((fl.x + 0.704) / 0.032, (0.68 - fl.y) / 0.0453 + u_scroll);\n"
+    "  float on = textcell(c) * inside;\n"
+    "  float x = floor(c.x);\n"
+    "  vec3 ink = x < 5.0 ? vec3(1.0, 0.70, 0.25) : x < 15.0 ? vec3(0.55, 0.60, 0.68)\n"
+    "           : x < 20.0 ? vec3(1.0) : x < 31.0 ? vec3(0.45, 0.85, 1.0) : vec3(0.45, 0.95, 0.45);\n"
+    "  col += vec3(0.10, 0.12, 0.32) * step(abs(floor(c.y) - u_a), 0.1) * inside;\n"   /* the line being run */
+    "  col += ink * on;\n"
+    /* title and status lines in inverse video, rows 36 and 37 of the grid */
+    "  float tb = step(0.73, fl.y) * step(fl.y, 0.81) * step(abs(fl.x), 0.52);\n"
+    "  float bb = step(-0.81, fl.y) * step(fl.y, -0.73) * step(abs(fl.x), 0.52);\n"
+    "  float tt = textcell(vec2((fl.x + 0.52) / 0.035, 36.0 + (0.80 - fl.y) / 0.07)) * tb\n"
+    "           + textcell(vec2((fl.x + 0.52) / 0.035, 37.0 + (-0.74 - fl.y) / 0.07)) * bb;\n"
+    "  col = mix(col, u_ph * 0.8 * (1.0 - tt), max(tb, bb));\n"
+    "  col *= 0.82 + 0.18 * sin(fl.y * 900.0);\n"
+    "  col *= 1.0 - 0.4 * smoothstep(75.0, 90.0, a);\n"
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-#define BOOT_LINES 14
-static float g_boot;                /* seconds into the boot */
-static float g_boot_built = -1;
+static int   g_laddr = 0x0400, g_lrun;
+static float g_lscroll, g_lrun_t;
 
-static void boot_lines(char lines[BOOT_LINES][48])
+static void listing_line(char *s)
 {
-    time_t now = time(NULL);
-    struct tm *tm = localtime(&now);
-    snprintf(lines[0], 48, "KEYBOARD .......... OK");
-    snprintf(lines[1], 48, "VIDEO ADAPTER ..... OK");
-    snprintf(lines[2], 48, "FLOPPY DRIVE A: ... OK");
-    snprintf(lines[3], 48, "FLOPPY DRIVE B: ... NONE");
-    snprintf(lines[4], 48, "HARD DISK 0 ....... 20 MB");
-    snprintf(lines[5], 48, "SERIAL PORTS ...... 2");
-    snprintf(lines[6], 48, "PARALLEL PORT ..... 1");
-    snprintf(lines[7], 48, "MATHS UNIT ........ NONE");
-    snprintf(lines[8], 48, "LENS CALIBRATION .. OK");
-    snprintf(lines[9], 48, "DOME ROTATION ..... OK");
-    strftime(lines[10], 48, "CLOCK ............. %H:%M:%S", tm);
-    strftime(lines[11], 48, "DATE .............. %d-%m-%Y", tm);
-    snprintf(lines[12], 48, "BOOTING FROM DISK 0 ...");
-    snprintf(lines[13], 48, "READY.");
+    static const struct { const char *op, *fmt, *note; int n; } I[] = {
+        { "LDA", "#$%02X",   "LOAD COUNT",   2 }, { "STA", "$%04X",  "SAVE IT",     3 },
+        { "LDX", "#$%02X",   "INDEX",        2 }, { "INX", "",       "NEXT",        1 },
+        { "CPX", "#$%02X",   "DONE YET?",    2 }, { "BNE", "LOOP",   "NO, AGAIN",   2 },
+        { "JSR", "PRINT",    "SHOW IT",      3 }, { "RTS", "",       "BACK",        1 },
+        { "LDY", "#$%02X",   "ROW",          2 }, { "DEY", "",       "",            1 },
+        { "BEQ", "SKIP",     "",             2 }, { "ADC", "#$%02X", "ADD",         2 },
+        { "AND", "#$%02X",   "MASK BITS",    2 }, { "ORA", "$%04X",  "",            3 },
+        { "JMP", "MAIN",     "START AGAIN",  3 }, { "SEC", "",       "",            1 },
+        { "ROL", "A",        "SHIFT LEFT",   1 }, { "LDA", "$%04X,X", "TABLE",      3 },
+        { "CMP", "#$%02X",   "",             2 }, { "PHA", "",       "KEEP A",      1 },
+    };
+    static const char *LABEL[] = { "MAIN", "LOOP", "PRINT", "SKIP", "WAIT", "DRAW", "SCAN", "TICK" };
+    if (rand() % 9 == 0) {                                    /* a label on its own line */
+        snprintf(s, 48, "%04X               %s:", g_laddr, LABEL[rand() % 8]);
+        return;
+    }
+    int k = rand() % (int)(sizeof I / sizeof I[0]);
+    int v = rand() & 0xffff, b1 = v & 255, b2 = v >> 8;
+    char opnd[16], bytes[16];
+    snprintf(opnd, sizeof opnd, I[k].fmt, I[k].n == 2 ? b1 : v);
+    if (I[k].n == 1) snprintf(bytes, sizeof bytes, "%02X", rand() & 255);
+    else if (I[k].n == 2) snprintf(bytes, sizeof bytes, "%02X %02X", rand() & 255, b1);
+    else snprintf(bytes, sizeof bytes, "%02X %02X %02X", rand() & 255, b1, b2);
+    snprintf(s, 48, "%04X  %-9s %-3s %-10s %s%s", g_laddr, bytes, I[k].op, opnd,
+             I[k].note[0] ? "; " : "", I[k].note);
+    g_laddr += I[k].n;
 }
 
-/* the timetable, in seconds */
-#define BOOT_ON     1.2f            /* warm-up done */
-#define BOOT_MEM    2.0f            /* memory count starts */
-#define BOOT_MEMEND 6.5f
-#define BOOT_LINE0  7.0f
-#define BOOT_LGAP   0.9f
-#define BOOT_HOLD   (BOOT_LINE0 + BOOT_LINES * BOOT_LGAP + 7.0f)
-#define BOOT_END    (BOOT_HOLD + 1.2f)
-
-static void boot_build(void)
+static void listing_reset(void)
 {
-    float col[3], w[3] = { 0.92f, 0.92f, 0.95f };
-    phosphor(col);
-    char lines[BOOT_LINES][48], s[64];
-    boot_lines(lines);
-    dome_points_clear(&g_pts);
-    float t = g_boot;
-    if (t > BOOT_ON - 0.4f) {
-        arc_text(&g_pts, "HEMISPHERE BIOS V2.04", 0, 84.0f, 90.0f, 3.6f, 2, w[0], w[1], w[2], 1.0f);
-        arc_text(&g_pts, "(C) 1987 DOME SYSTEMS", 0, 78.0f, 90.0f, 3.0f, 2, w[0], w[1], w[2], 0.7f);
+    memset(g_grid, 0, sizeof g_grid);
+    g_laddr = 0x0400;
+    char s[48];
+    for (int r = 0; r < LROWS; r++) { listing_line(s); grid_put(0, r, s); }
+    grid_put(0, 36, "  ASSEMBLER - DOME.ASM");
+    g_lscroll = 0; g_lrun = 5;
+    g_grid_dirty = 1;
+}
+
+static void listing_update(float dt)
+{
+    g_lscroll += dt * 2.2f;                                   /* lines a second */
+    while (g_lscroll >= 1.0f) {
+        g_lscroll -= 1.0f;
+        memmove(g_grid[0], g_grid[1], GW * (LROWS - 1));
+        memset(g_grid[LROWS - 1], 0, GW);
+        char s[48];
+        listing_line(s);
+        grid_put(0, LROWS - 1, s);
+        g_lrun--;
     }
-    if (t > BOOT_MEM) {
-        float m = fminf(1.0f, (t - BOOT_MEM) / (BOOT_MEMEND - BOOT_MEM));
-        snprintf(s, sizeof s, "MEMORY TEST  %06dK%s", (int)(m * 40.0f) * 16, m >= 1.0f ? "  OK" : "");
-        arc_text(&g_pts, s, 0, 84.0f, -90.0f, 3.6f, 2, col[0], col[1], col[2], 1.0f);
+    g_lrun_t += dt;
+    if (g_lrun_t > 0.12f) {                                   /* the run bar steps, and jumps back */
+        g_lrun_t = 0;
+        g_lrun = rand() % 6 == 0 ? g_lrun - 3 - rand() % 4 : g_lrun + 1;
+        if (g_lrun < 1 || g_lrun > 28) g_lrun = 4 + rand() % 20;
     }
-    /* checks, rim inwards, alternating top and bottom */
-    for (int i = 0; i < BOOT_LINES; i++) {
-        float t0 = BOOT_LINE0 + i * BOOT_LGAP;
-        if (t < t0) break;
-        int n = (int)((t - t0) * 40.0f) + 1;             /* typed at 40 characters a second */
-        int last = i == BOOT_LINES - 1;
-        float r = last ? 12.0f : 70.0f - (i / 2) * 8.6f;
-        float centre = (i & 1) ? -90.0f : 90.0f;
-        /* fit the whole line in half a circle */
-        float half = DOME_PI * 0.9f * sinf(DEG2RAD(r)) * 7.0f / (6.0f * (float)strlen(lines[i]));
-        float h = last ? 4.0f : fminf(3.2f, half * 180.0f / DOME_PI);
-        int nr = strstr(lines[i], "NONE") != NULL;
-        arc_text(&g_pts, lines[i], n, r, centre, h, 2,
-                 last ? 1.0f : nr ? 1.0f : col[0], last ? 1.0f : nr ? 0.6f : col[1],
-                 last ? 1.0f : nr ? 0.2f : col[2], 1.0f);
-    }
-    /* the cursor: a block at the centre, blinking */
-    if (t > BOOT_ON && fmodf(t, 1.0f) < 0.55f) {
-        for (int y = -6; y <= 6; y++)
-            for (int x = -4; x <= 4; x++)
-                push_flat(&g_pts, x * 0.0045f, y * 0.0045f - 0.01f, col[0], col[1], col[2], 1.0f);
-    }
-    dome_points_upload(&g_pts);
+    char st[48];
+    snprintf(st, sizeof st, "  PASS 2  LINE %05d  OK", (g_laddr - 0x0400) / 2);
+    memset(g_grid[37], 0, GW);
+    grid_put(0, 37, st);
 }
 
 /* ================================================================ */
-/* 4: circuit board                                                   */
+/* 3: circuit board                                                   */
 /* ================================================================ */
 static const char PCB[] =
     U
@@ -705,233 +695,92 @@ static void pcb_signals(void)
 }
 
 /* ================================================================ */
-/* 5: nixie clock                                                     */
+/* 4: core memory                                                     */
 /* ================================================================ */
-static const char NIXIE[] =
+/* The globe threaded with ferrite rings, as in a core memory plane:
+ * rings tilted alternately, X and Y wires through them. Waves of reads
+ * and writes sweep across, flipping rings (lit = 1); the selected X and
+ * Y wires glow. */
+static const char CORE[] =
     U
     "vec4 surface(vec3 dir, vec3 view){\n"
-    POLAR
-    "  vec3 col = vec3(0.025, 0.018, 0.015) * (1.0 + 0.4 * sin(th * 3.0 + a * 0.05));\n"
-    "  col += vec3(0.25, 0.08, 0.01) * 0.10 * exp(-pow((a - 77.0) / 6.0, 2.0));\n"
-    "  col += vec3(0.25, 0.08, 0.01) * 0.12 * exp(-pow(abs(fl.y) / 0.12, 2.0)) * step(abs(fl.x), 0.45);\n"
+    "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
+    "  float rows = 22.0;\n"
+    "  float rf = (lat / PI + 0.5) * rows, row = floor(rf);\n"
+    "  float latc = ((row + 0.5) / rows - 0.5) * PI;\n"
+    "  float n = max(4.0, floor(rows * 2.0 * cos(latc) / 2.0 + 0.5) * 2.0);\n"
+    "  float cf = (lon / (2.0 * PI) + 0.5) * n, cl = floor(cf);\n"
+    "  vec2 q = vec2((fract(cf) - 0.5) * 2.0 * rows * cos(lat) / n, fract(rf) - 0.5);\n"
+    "  vec3 col = vec3(0.03, 0.09, 0.06);\n"                               /* the frame behind */
+    /* wires: X along the rows, Y along the columns */
+    "  float sx = step(abs(row - u_a), 0.1), sy = step(abs(fract(cl / n) - u_b), 0.5 / n);\n"
+    "  float wx = smoothstep(0.045, 0.02, abs(q.y)), wy = smoothstep(0.045, 0.02, abs(q.x));\n"
+    "  col = mix(col, mix(vec3(0.75, 0.45, 0.18), vec3(1.0, 0.75, 0.3), sx), wx);\n"
+    "  col = mix(col, mix(vec3(0.75, 0.45, 0.18), vec3(1.0, 0.75, 0.3), sy), wy);\n"
+    /* the ring, tilted one way or the other like a chequerboard */
+    "  float tilt = mod(row + cl, 2.0) < 0.5 ? 0.7854 : -0.7854;\n"
+    "  vec2 r = vec2(cos(tilt) * q.x - sin(tilt) * q.y, sin(tilt) * q.x + cos(tilt) * q.y);\n"
+    "  float e = length(r / vec2(0.44, 0.27));\n"
+    "  float ring = smoothstep(0.50, 0.58, e) * smoothstep(1.06, 0.98, e);\n"
+    "  float wave = u_t * 0.22 + row * 0.045 + cl / n * 1.7;\n"
+    "  float bit = step(0.5, h3(vec3(row, cl, floor(wave))));\n"
+    "  float flip = exp(-fract(wave) * 14.0);\n"                           /* just written */
+    "  vec3 rc = mix(vec3(0.20, 0.20, 0.22), vec3(1.0, 0.55, 0.15), bit);\n"
+    "  rc *= 0.7 + 0.3 * smoothstep(0.7, 0.85, e);\n"
+    "  rc += vec3(1.0, 0.95, 0.8) * flip * 0.8 + vec3(1.0, 0.7, 0.3) * sx * sy;\n"
+    "  col = mix(col, rc, ring);\n"
+    "  col *= 0.75 + 0.25 * max(dot(view, normalize(vec3(-0.4, 0.5, 0.8))), 0.0);\n"
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-/* Digits as strokes in a 1 x 1.6 box (origin bottom left), like the
- * bent wires in a Nixie tube. Each stroke: kind 0 line (x0 y0 x1 y1),
- * kind 1 arc (cx cy rx ry a0 a1, degrees). */
-typedef struct { int kind; float v[6]; } Stroke;
-static const Stroke DIGIT[10][4] = {
-    { {1, {0.5f, 0.8f, 0.42f, 0.78f, 0, 360}} },
-    { {0, {0.55f, 0.0f, 0.55f, 1.6f}}, {0, {0.55f, 1.6f, 0.3f, 1.38f}} },
-    { {1, {0.5f, 1.16f, 0.4f, 0.4f, 165, -35}}, {0, {0.83f, 0.93f, 0.08f, 0.0f}}, {0, {0.08f, 0.0f, 0.95f, 0.0f}} },
-    { {1, {0.5f, 1.2f, 0.37f, 0.37f, 155, -90}}, {1, {0.5f, 0.43f, 0.43f, 0.43f, 90, -160}} },
-    { {0, {0.72f, 0.0f, 0.72f, 1.6f}}, {0, {0.72f, 1.6f, 0.05f, 0.5f}}, {0, {0.05f, 0.5f, 0.95f, 0.5f}} },
-    { {0, {0.88f, 1.6f, 0.18f, 1.6f}}, {0, {0.18f, 1.6f, 0.12f, 0.86f}}, {1, {0.5f, 0.5f, 0.43f, 0.45f, 125, -150}} },
-    { {1, {0.5f, 0.46f, 0.43f, 0.46f, 0, 360}}, {1, {1.3f, 0.55f, 1.22f, 1.05f, 180, 118}} },
-    { {0, {0.05f, 1.6f, 0.95f, 1.6f}}, {0, {0.95f, 1.6f, 0.35f, 0.0f}} },
-    { {1, {0.5f, 1.21f, 0.35f, 0.38f, 0, 360}}, {1, {0.5f, 0.43f, 0.44f, 0.43f, 0, 360}} },
-    { {1, {0.5f, 1.14f, 0.43f, 0.46f, 0, 360}}, {1, {-0.3f, 1.05f, 1.22f, 1.05f, 0, -62}} },
-};
-
-typedef struct { float cx, cy, ux, uy, size; } Tube;   /* centre, up, digit height */
-#define MAX_TUBE 48
-static Tube g_tube[MAX_TUBE];
-static int  g_ntube;
-static DomePoints g_stack;          /* the glass and the unlit digits: built once */
-
-/* a point of digit space (0..1, 0..1.6) in tube t, flat coords */
-static void tube_xy(const Tube *t, float gx, float gy, float *x, float *y)
-{
-    float s = t->size / 1.6f;
-    float lx = (gx - 0.5f) * s, ly = (gy - 0.8f) * s;
-    float rx = t->uy, ry = -t->ux;                         /* right = up turned clockwise */
-    *x = t->cx + lx * rx + ly * t->ux;
-    *y = t->cy + lx * ry + ly * t->uy;
-}
-
-static void digit_push(DomePoints *p, const Tube *t, int d, float sparse,
-                       float r, float g, float b, float a)
-{
-    float sp = sparse * 0.035f * 0.16f / t->size;           /* dot spacing in digit units */
-    if (sp > 0.06f * sparse) sp = 0.06f * sparse;
-    for (int k = 0; k < 4; k++) {
-        const Stroke *s = &DIGIT[d][k];
-        if (s->kind == 0 && s->v[0] == 0 && s->v[1] == 0 && s->v[2] == 0 && s->v[3] == 0) break;
-        float x, y;
-        if (s->kind == 0) {
-            float len = hypotf(s->v[2] - s->v[0], s->v[3] - s->v[1]);
-            int n = (int)(len / sp) + 1;
-            for (int i = 0; i <= n; i++) {
-                float f = (float)i / n;
-                tube_xy(t, s->v[0] + (s->v[2] - s->v[0]) * f, s->v[1] + (s->v[3] - s->v[1]) * f, &x, &y);
-                push_flat(p, x, y, r, g, b, a);
-            }
-        } else {
-            float a0 = DEG2RAD(s->v[4]), a1 = DEG2RAD(s->v[5]);
-            float len = fabsf(a1 - a0) * 0.5f * (s->v[2] + s->v[3]);
-            int n = (int)(len / sp) + 1;
-            for (int i = 0; i <= n; i++) {
-                float ang = a0 + (a1 - a0) * i / n;
-                tube_xy(t, s->v[0] + s->v[2] * cosf(ang), s->v[1] + s->v[3] * sinf(ang), &x, &y);
-                push_flat(p, x, y, r, g, b, a);
-            }
-        }
-    }
-}
-
-static void tube_add(float cx, float cy, float ux, float uy, float size)
-{
-    if (g_ntube >= MAX_TUBE) return;
-    g_tube[g_ntube++] = (Tube){ cx, cy, ux, uy, size };
-}
-
-/* tubes along an arc at radius rad, n of them centred on angle c
- * (radians), facing out on the top and in on the bottom like the text */
-static void tube_arc(int n, float rad, float c, float size, float gap)
-{
-    int top = sinf(c) > 0;
-    float step = (size * 0.75f + gap) / rad;
-    for (int i = 0; i < n; i++) {
-        float ang = c + (top ? -1.0f : 1.0f) * (i - (n - 1) * 0.5f) * step;
-        float ux = cosf(ang), uy = sinf(ang);
-        if (!top) { ux = -ux; uy = -uy; }
-        tube_add(rad * cosf(ang), rad * sinf(ang), ux, uy, size);
-    }
-}
-
-static void nixie_layout(void)
-{
-    g_ntube = 0;
-    /* 0-5: the time, big, across the middle */
-    for (int i = 0; i < 6; i++) {
-        float x = (i - 2.5f) * 0.125f + (i < 2 ? -0.03f : i > 3 ? 0.03f : 0.0f);
-        tube_add(x, 0.0f, 0.0f, 1.0f, 0.17f);
-    }
-    tube_arc(6, 0.60f, DOME_PI / 2, 0.10f, 0.012f);      /* 6-11: the date, on top    */
-    tube_arc(6, 0.60f, -DOME_PI / 2, 0.10f, 0.012f);     /* 12-17: a counter, below   */
-    for (int i = 0; i < 24; i++) {                        /* 18-41: the crown, rim     */
-        float ang = i * 2.0f * DOME_PI / 24 + DOME_PI / 24;
-        tube_add(0.87f * cosf(ang), 0.87f * sinf(ang), cosf(ang), sinf(ang), 0.075f);
-    }
-    /* the glass of each tube, and its stack of unlit digits */
-    dome_points_clear(&g_stack);
-    for (int i = 0; i < g_ntube; i++) {
-        const Tube *t = &g_tube[i];
-        float hw = 0.42f, hh = 1.0f;                         /* in digit-box units */
-        for (int k = 0; k < 120; k++) {
-            float ang = k * 2.0f * DOME_PI / 120;
-            float gx = 0.5f + hw * 1.25f * cosf(ang), gy = 0.8f + hh * 1.08f * sinf(ang);
-            if (fabsf(sinf(ang)) < 0.75f) gx = 0.5f + (cosf(ang) > 0 ? 1 : -1) * hw * 1.25f;
-            float x, y;
-            tube_xy(t, gx, gy, &x, &y);
-            push_flat(&g_stack, x, y, 0.45f, 0.45f, 0.55f, 0.35f);
-        }
-        for (int d = 0; d < 10; d++) digit_push(&g_stack, t, d, 2.2f, 0.40f, 0.20f, 0.10f, 0.10f);
-    }
-    dome_points_upload(&g_stack);
-}
-
-static void nixie_build(void)
-{
-    time_t now = time(NULL);
-    struct tm *tm = localtime(&now);
-    int dig[MAX_TUBE];
-    int v[6] = { tm->tm_hour / 10, tm->tm_hour % 10, tm->tm_min / 10, tm->tm_min % 10,
-                 tm->tm_sec / 10, tm->tm_sec % 10 };
-    for (int i = 0; i < 6; i++) dig[i] = v[i];
-    int dt6[6] = { tm->tm_mday / 10, tm->tm_mday % 10, (tm->tm_mon + 1) / 10, (tm->tm_mon + 1) % 10,
-                   (tm->tm_year % 100) / 10, tm->tm_year % 10 };
-    for (int i = 0; i < 6; i++) dig[6 + i] = dt6[i];
-    long cnt = (long)(g_t * 10.0f);                           /* tenths of a second */
-    for (int i = 0; i < 6; i++) { dig[17 - i] = (int)(cnt % 10); cnt /= 10; }
-    long fast = (long)(g_t * 100.0f);
-    for (int i = 18; i < g_ntube; i++) dig[i] = (int)((fast / (1 + (i % 3) * 7) + i * 3) % 10);
-    /* the roll: for the first two seconds of every minute, each tube
-     * spins through its digits (it keeps the cathodes healthy) */
-    if (tm->tm_sec < 2) {
-        float f = fmodf(g_t, 100.0f);
-        for (int i = 0; i < g_ntube; i++) dig[i] = (int)(f * 22.0f + i) % 10;
-    }
-    dome_points_clear(&g_pts);
-    for (int pass = 0; pass < 2; pass++)
-        for (int i = 0; i < g_ntube; i++) {
-            if (pass == 0) digit_push(&g_pts, &g_tube[i], dig[i], 1.0f, 1.0f, 0.35f, 0.05f, 0.16f);
-            else digit_push(&g_pts, &g_tube[i], dig[i], 1.0f, 1.0f, 0.62f, 0.22f, 1.0f);
-        }
-    dome_points_upload(&g_pts);
-}
+static float g_core_row, g_core_col, g_core_clock;
 
 /* ================================================================ */
-/* 6: cellular rule                                                   */
+/* 6: blinkenlights                                                   */
 /* ================================================================ */
-#define CA_W 256
-#define CA_H 64
-#define CA_RIM 82.0f
-static const char CA[] =
+/* The globe covered in panels of 8 x 8 lamps. Each panel runs its own
+ * pattern (a binary counter, a shift register, a scanner or busy
+ * flicker) in its own colour. */
+static const char BLINKEN[] =
     U
-    "uniform sampler2D u_cells;\n"
-    "uniform float u_rows;\n"                           /* rings filled so far */
     "vec4 surface(vec3 dir, vec3 view){\n"
-    POLAR
-    "  vec3 col = vec3(0.01, 0.01, 0.02);\n"
-    "  float rw = 82.0 / 64.0;\n"
-    "  float j = floor(a / rw);\n"
-    "  if (j < 64.0 && j >= 64.0 - u_rows) {\n"
-    "    float i = floor(fract(u + 0.0) * 256.0);\n"
-    "    float on = texture2D(u_cells, vec2((i + 0.5) / 256.0, (j + 0.5) / 64.0)).r;\n"
-    "    vec2 f = vec2(fract(u * 256.0), fract(a / rw));\n"
-    "    float edge = smoothstep(0.0, 0.12, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)) * (0.3 + a / 60.0));\n"
-    "    float age = (63.0 - j) / 63.0;\n"                 /* 0 = newest, at the rim */
-    "    vec3 hot = mix(vec3(1.0, 0.95, 0.8), u_ph, smoothstep(0.0, 0.25, age));\n"
-    "    vec3 c = mix(hot, theme(u_a, age * 0.5 + 0.1), smoothstep(0.15, 0.9, age));\n"
-    "    col = mix(col + vec3(0.02, 0.025, 0.04), c * (0.35 + 0.65 * edge), on);\n"
+    "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
+    "  float rows = 48.0;\n"
+    "  float rf = (lat / PI + 0.5) * rows, row = floor(rf);\n"
+    "  float latc = ((floor(row / 8.0) * 8.0 + 4.0) / rows - 0.5) * PI;\n"   /* one count per panel row */
+    "  float n = max(8.0, floor(rows * 2.0 * cos(latc) / 8.0 + 0.5) * 8.0);\n"
+    "  float cf = (lon / (2.0 * PI) + 0.5) * n, cl = floor(cf);\n"
+    "  vec2 lx = vec2(mod(cl, 8.0), mod(row, 8.0));\n"
+    "  vec2 pn = vec2(floor(cl / 8.0), floor(row / 8.0));\n"
+    "  float h = h3(vec3(pn, 1.0)), h2 = h3(vec3(pn, 2.0));\n"
+    "  float type = floor(h * 4.0), on;\n"
+    "  if (type < 0.5) {\n"                                                   /* counter */
+    "    float v = mod(floor(u_t * (2.0 + h2 * 10.0)) + lx.y * 37.0, 256.0);\n"
+    "    on = mod(floor(v / exp2(lx.x)), 2.0);\n"
+    "  } else if (type < 1.5) {\n"                                            /* shift register */
+    "    on = step(0.55, h3(vec3(pn.x * 8.0 + lx.y, floor(u_t * (4.0 + h2 * 6.0)) - lx.x, pn.y)));\n"
+    "  } else if (type < 2.5) {\n"                                            /* scanner */
+    "    float pos = abs(fract(u_t * (0.3 + h2 * 0.4) + lx.y * 0.06) * 2.0 - 1.0) * 7.0;\n"
+    "    on = step(abs(lx.x - pos), 0.6) + 0.35 * step(abs(lx.x - pos), 1.6);\n"
+    "  } else {\n"                                                            /* busy */
+    "    on = step(0.62, h3(vec3(cl, row, floor(u_t * (3.0 + h2 * 9.0) + h * 7.0))));\n"
     "  }\n"
-    "  col += u_ph * 0.6 * smoothstep(0.25, 0.0, abs(a - 82.3));\n"   /* the print head */
+    "  vec3 lc = h2 < 0.4 ? vec3(1.0, 0.18, 0.10) : h2 < 0.7 ? vec3(1.0, 0.65, 0.10)\n"
+    "          : h2 < 0.9 ? vec3(0.25, 1.0, 0.35) : vec3(0.35, 0.6, 1.0);\n"
+    "  vec2 q = vec2((fract(cf) - 0.5) * 2.0 * rows * cos(lat) / n, fract(rf) - 0.5);\n"
+    "  float d = length(q);\n"
+    "  vec3 col = vec3(0.04, 0.04, 0.05);\n"
+    "  col = mix(col, lc * (0.10 + 0.95 * clamp(on, 0.0, 1.0)), smoothstep(0.33, 0.26, d));\n"
+    "  col += lc * clamp(on, 0.0, 1.0) * smoothstep(0.12, 0.0, d) * 0.5;\n"
+    /* dark bezels between the panels */
+    "  float bx = step(lx.x, 0.5) * step(fract(cf), 0.12) + step(7.5, lx.x) * step(0.88, fract(cf));\n"
+    "  float by = step(lx.y, 0.5) * step(fract(rf), 0.12) + step(7.5, lx.y) * step(0.88, fract(rf));\n"
+    "  col = mix(col, vec3(0.0), max(bx, by));\n"
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-static unsigned char g_ca[CA_H][CA_W];
-static GLuint g_ca_tex;
-static int    g_ca_rule, g_ca_rows, g_ca_gen, g_ca_which;
-static float  g_ca_step, g_ca_life;
-static const int RULES[] = { 30, 90, 110, 150, 45, 73, 105, 22 };
-#define NRULES ((int)(sizeof RULES / sizeof RULES[0]))
-
-static void ca_reset(void)
-{
-    g_ca_rule = RULES[g_ca_which % NRULES];
-    memset(g_ca, 0, sizeof g_ca);
-    /* the newest line lives in the last row (the rim) */
-    if (g_ca_rule == 45 || g_ca_rule == 73 || g_ca_rule == 105)
-        for (int i = 0; i < CA_W; i++) g_ca[CA_H - 1][i] = (rand() & 3) == 0 ? 255 : 0;
-    else                                     /* four seeds, so the patterns meet all round */
-        for (int k = 0; k < 4; k++) g_ca[CA_H - 1][(CA_W * 3 / 4 + k * CA_W / 4) % CA_W] = 255;
-    g_ca_rows = 1; g_ca_gen = 0; g_ca_life = 0;
-}
-
-static void ca_step(void)
-{
-    unsigned char next[CA_W];
-    const unsigned char *cur = g_ca[CA_H - 1];
-    for (int i = 0; i < CA_W; i++) {
-        int l = cur[(i + CA_W - 1) % CA_W] ? 4 : 0, c = cur[i] ? 2 : 0, r = cur[(i + 1) % CA_W] ? 1 : 0;
-        next[i] = (g_ca_rule >> (l | c | r)) & 1 ? 255 : 0;
-    }
-    memmove(g_ca[0], g_ca[1], sizeof g_ca[0] * (CA_H - 1));       /* older lines move in */
-    memcpy(g_ca[CA_H - 1], next, CA_W);
-    if (g_ca_rows < CA_H) g_ca_rows++;
-    g_ca_gen++;
-}
-
-static void ca_upload(void)
-{
-    glBindTexture(GL_TEXTURE_2D, g_ca_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, CA_W, CA_H, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, g_ca);
-}
-
 /* ================================================================ */
-/* 7: packet network                                                  */
+/* 5: packet network                                                  */
 /* ================================================================ */
 static const char NET[] =
     U
@@ -1073,18 +922,17 @@ static void net_build(void)
 /* ================================================================ */
 /* Scene                                                              */
 /* ================================================================ */
-static const char *GLSL[NSTYLE] = { PANEL, SCOPE, DARKSCREEN, CRT, PCB, NIXIE, CA, NET };
+static const char *GLSL[NSTYLE] = { PANEL, SCOPE, LISTING, PCB, CORE, NET, BLINKEN };
 static float g_txt_age = 1e9f;      /* seconds since the readout was built */
 static int   g_txt_style = -1;
+static int   g_cur_style = -1;
 
 static void restart(int s)
 {
     switch (s) {
     case 0: panel_reset(); break;
-    case 2: memset(g_hex, 0, sizeof g_hex); g_hexsteps = 0; g_hex_built = -1; break;
-    case 3: g_boot = 0; g_boot_built = -1; break;
-    case 4: pcb_layout(); g_pcb_built = -1; break;
-    case 6: ca_reset(); ca_upload(); break;
+    case 2: listing_reset(); break;
+    case 3: pcb_layout(); g_pcb_built = -1; break;
     default: break;
     }
     g_txt_style = -1;
@@ -1093,20 +941,11 @@ static void restart(int s)
 static void init(void)
 {
     for (int i = 0; i < NSTYLE; i++) g_prog[i] = dome_surface_program_themed(GLSL[i]);
-    dome_points_init(&g_pts, 60000);
-    dome_points_init(&g_txt, 40000);
-    dome_points_init(&g_stack, 60000);
+    dome_points_init(&g_pts, 20000);
+    dome_points_init(&g_txt, 20000);
     dome_points_init(&g_wires, 20000);
-    glGenTextures(1, &g_ca_tex);
-    glBindTexture(GL_TEXTURE_2D, g_ca_tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    ca_reset();
-    ca_upload();
-    nixie_layout();
+    font_init();
     net_layout();
     panel_reset();
     pcb_layout();
@@ -1117,32 +956,25 @@ static void update(const DomeFrame *f)
     float dt = f->dt * L.speed;
     g_t += dt;
     g_txt_age += dt;
-    switch (style()) {
+    int s = style();
+    if (s != g_cur_style) { g_cur_style = s; restart(s); }
+    switch (s) {
     case 0: panel_update(dt); break;
-    case 2:
-        g_hexstep += dt;
-        if (g_hexstep > 0.22f) { g_hexstep = 0; hex_newline(); }
-        break;
+    case 2: listing_update(dt); break;
     case 3:
-        g_boot += dt;
-        if (g_boot > BOOT_END + 0.8f) restart(3);
-        break;
-    case 4:
         g_pcb_t += dt;
         if (g_pcb_t > PCB_LIFE) { pcb_layout(); g_pcb_built = -1; }
         break;
-    case 6:
-        g_ca_step += dt;
-        g_ca_life += dt;
-        if (g_ca_step > 0.12f) { g_ca_step = 0; ca_step(); ca_upload(); }
-        if (g_ca_life > 26.0f) { g_ca_which++; ca_reset(); ca_upload(); }
+    case 4:                                            /* a new X and Y wire every so often */
+        g_core_clock += dt;
+        if (g_core_clock > 0.6f) { g_core_clock = 0; g_core_row = (float)(rand() % 22); g_core_col = frnd(); }
         break;
-    case 7: net_update(dt); break;
+    case 5: net_update(dt); break;
     default: break;
     }
 }
 
-/* labels and readouts along the rim, rebuilt every second or so */
+/* labels and readouts along the rim, rebuilt only now and then */
 static void readout(int s)
 {
     char a[96];
@@ -1154,11 +986,7 @@ static void readout(int s)
         arc_text(&g_txt, "CH1 0.5 V/DIV   CH2 0.5 V/DIV   X-Y", 0, 86.0f, -90.0f, 2.6f, 2, c[0], c[1], c[2], 0.75f);
         arc_text(&g_txt, "TRIG AUTO   INTENSITY", 0, 86.0f, 90.0f, 2.6f, 2, c[0], c[1], c[2], 0.75f);
         break;
-    case 6:
-        snprintf(a, sizeof a, "RULE %d   GENERATION %d", g_ca_rule, g_ca_gen);
-        arc_text(&g_txt, a, 0, 86.0f, -90.0f, 3.0f, 2, c[0], c[1], c[2], 0.9f);
-        break;
-    case 7:
+    case 5:
         snprintf(a, sizeof a, "NODES %d   LINKS %d   HOPS/S %.0f%s", NNODE, g_nlink, g_hop_rate,
                  g_storm > 0 ? "   BROADCAST STORM" : "");
         arc_text(&g_txt, a, 0, 84.0f, -90.0f, 3.0f, 2, 0.5f, 0.85f, 1.0f, 0.9f);
@@ -1170,20 +998,25 @@ static void readout(int s)
     g_txt_style = s;
 }
 
+static void bind_tex(GLuint p, const char *name, GLuint tex, int unit)
+{
+    glActiveTexture(GL_TEXTURE0 + unit);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glUniform1i(glGetUniformLocation(p, name), unit);
+}
+
 static void draw(const DomeFrame *f)
 {
     int s = style();
+    if (s != g_cur_style) { g_cur_style = s; restart(s); }
     GLuint p = g_prog[s];
     float ph[3];
     phosphor(ph);
     float ua = 0, ub = 0;
-    if (s == 2) ua = 1.0f;
-    if (s == 3) {
-        ua = fminf(1.0f, g_boot / BOOT_ON);
-        ub = g_boot > BOOT_HOLD ? fminf(1.0f, (g_boot - BOOT_HOLD) / (BOOT_END - BOOT_HOLD)) : 0.0f;
-        if (g_boot > BOOT_END) ub = 1.0f, ua = 0.0f;
-    }
-    if (s == 6) ua = (float)(g_ca_which % DOME_THEMES);
+    if (s == 2) ua = (float)g_lrun;
+    if (s == 4) { ua = g_core_row; ub = g_core_col; }
+    if (s == 2) { glActiveTexture(GL_TEXTURE2); grid_upload(); }
+    glActiveTexture(GL_TEXTURE0);
 
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), g_t);
@@ -1197,12 +1030,12 @@ static void draw(const DomeFrame *f)
         bytes3(p, "u_sw", g_pan.sw);
         bytes3(p, "u_stat", g_pan.stat);
     }
-    if (s == 6) {
-        glUniform1f(glGetUniformLocation(p, "u_rows"), (float)g_ca_rows);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, g_ca_tex);
-        glUniform1i(glGetUniformLocation(p, "u_cells"), 1);
+    if (s == 2) {
+        bind_tex(p, "u_font", g_font_tex, 1);
+        bind_tex(p, "u_grid", g_grid_tex, 2);
+        glUniform1f(glGetUniformLocation(p, "u_scroll"), g_lscroll);
     }
+    glActiveTexture(GL_TEXTURE0);
     dome_surface_end();
 
     mat3 still; m3_identity(still);
@@ -1217,15 +1050,7 @@ static void draw(const DomeFrame *f)
         dome_draw_points(&g_pts, still, fa * 0.18f, 9.0f);     /* the glow */
         dome_draw_points(&g_pts, still, fa, 2.6f);
         break;
-    case 2:
-        if (g_hexsteps != g_hex_built) { hex_build(); g_hex_built = g_hexsteps; }
-        dome_draw_points(&g_pts, still, fa, 2.2f);
-        break;
-    case 3:
-        if (g_boot - g_boot_built > 0.05f || g_boot < g_boot_built) { boot_build(); g_boot_built = g_boot; }
-        dome_draw_points(&g_pts, still, fa * (1.0f - ub), 2.4f);
-        break;
-    case 4: {
+    case 3: {
         int grow_done = g_pcb_t >= PCB_GROW && g_pcb_t < PCB_LIFE - 1.5f;
         if (!grow_done || g_pcb_built < 0) { pcb_build(); g_pcb_built = grow_done ? 1.0f : -1.0f; }
         pcb_signals();
@@ -1235,19 +1060,14 @@ static void draw(const DomeFrame *f)
         break;
     }
     case 5:
-        nixie_build();
-        dome_draw_points(&g_stack, still, fa, 1.8f);
-        dome_draw_points(&g_pts, still, fa, 2.4f);
-        break;
-    case 7:
         net_build();
         dome_draw_points(&g_wires, f->rot, fa, 2.0f);
         dome_draw_points(&g_pts, f->rot, fa, 4.0f);
         break;
     default: break;
     }
-    /* rim readouts (styles 1, 6, 7), refreshed once a second */
-    if (L.text > 0.5f && (s == 1 || s == 6 || s == 7)) {
+    /* rim readouts, refreshed once a second */
+    if (L.text > 0.5f && (s == 1 || s == 5)) {
         if (g_txt_style != s || g_txt_age > 1.0f) readout(s);
         dome_draw_points(&g_txt, still, fa, 2.2f);
     }
@@ -1258,13 +1078,12 @@ static int key(SDL_Keycode k, int shift)
     (void)shift;
     if (k == SDLK_m) {
         L.phosphor = (float)(((int)lroundf(L.phosphor) + 1) % 3);
-        g_boot_built = -1; g_txt_style = -1;
+        g_txt_style = -1;
         printf("Computers: %s phosphor\n", L.phosphor < 0.5f ? "green" : L.phosphor < 1.5f ? "amber" : "white");
         return 1;
     }
     if (k != SDLK_n) return 0;
     L.style = (float)((style() + 1) % NSTYLE);
-    restart(style());
     printf("Computers: %s\n", NAMES[style()]);
     return 1;
 }
@@ -1272,5 +1091,5 @@ static int key(SDL_Keycode k, int shift)
 Scene scene_computers = {
     "COMPUTERS", "computers.cfg", 0, P, (int)(sizeof P / sizeof P[0]),
     init, NULL, update, draw, key,
-    "N next style, M phosphor colour", NULL
+    "N next style, M screen colour", NULL
 };

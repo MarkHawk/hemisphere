@@ -28,7 +28,7 @@ SRC = main.c dome/dome.c dome/glload.c dome/text.c \
       scenes/julia.c scenes/kaleido.c scenes/life.c \
       scenes/moon.c scenes/orbit.c scenes/groovy.c \
       scenes/scifi.c scenes/computers.c \
-      scenes/hypno.c scenes/balls.c scenes/retro.c
+      scenes/hypno.c scenes/balls.c scenes/retro.c scenes/screen.c
 OBJ = $(SRC:.c=.o)
 
 $(EXE): $(OBJ)
@@ -48,6 +48,7 @@ scenes/kaleido.o scenes/life.o scenes/moon.o scenes/orbit.o \
 scenes/groovy.o scenes/scifi.o scenes/hypno.o \
 scenes/balls.o scenes/retro.o: $(HDR)
 scenes/computers.o: scenes/computers.c $(HDR) dome/font5x7.h
+scenes/screen.o: scenes/screen.c $(HDR) dome/font5x7.h third_party/stb_image.h
 scenes/planet.o: scenes/planet.c $(HDR) third_party/stb_image.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-function -c -o $@ $<
 

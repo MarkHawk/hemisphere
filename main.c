@@ -8,7 +8,8 @@
 
 extern Scene scene_deathstar, scene_planet, scene_plasma, scene_julia,
              scene_kaleido, scene_life, scene_moon, scene_orbit, scene_groovy, scene_scifi,
-             scene_computers, scene_hypno, scene_balls, scene_retro;
+             scene_computers, scene_hypno, scene_balls, scene_retro,
+             scene_screen;
 
 int main(int argc, char **argv)
 {
@@ -16,7 +17,8 @@ int main(int argc, char **argv)
                               &scene_julia, &scene_kaleido, &scene_life,
                               &scene_moon, &scene_orbit, &scene_groovy,
                               &scene_scifi, &scene_computers,
-                              &scene_hypno, &scene_balls, &scene_retro };
+                              &scene_hypno, &scene_balls, &scene_retro,
+                              &scene_screen };
     return dome_run(argc, argv, "Hemisphere", scenes,
                     (int)(sizeof scenes / sizeof scenes[0]));
 }
