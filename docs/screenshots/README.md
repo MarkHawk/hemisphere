@@ -19,6 +19,7 @@ The main README shows these, one per scene. Save each as a JPEG, roughly
 | hypno.jpg | Hypnotic (, and .) | Geodesic sphere or Fibonacci globe |
 | balls.jpg | Sports balls (, and .) | Football, with the pentagons facing you |
 | retro.jpg | 8-bit retro (, and .) | Pixel planet or copper bars |
+| screen.jpg | Retro screen (, and .) | Light grid or defence command |
 | calibration.jpg | G Lens grid | Shows the calibration at work |
 
 Photograph the real globe rather than saving the screen: the Pi's own

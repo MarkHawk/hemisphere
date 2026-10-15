@@ -36,7 +36,7 @@ write it up (see [Debugging notes](#debugging-notes)).
 I built it with AI-assisted tooling (Claude Code). I directed the work,
 tested every change on the real display, and did the calibration myself.
 
-Fourteen scenes come with it. The first ten are on the number keys; the
+Fifteen scenes come with it. The first ten are on the number keys; the
 rest are on `,` and `.` and the web remote.
 
 | Key | Scene | What it shows |
@@ -51,10 +51,11 @@ rest are on `,` and `.` and the web remote.
 | 8 | Orbit watch | The live Earth with real day and night, the ISS and its next orbit, a few hundred satellites, and the last day's earthquakes |
 | 9 | Groovy | 60s and 70s patterns: op art, psychedelic swirl, flower power, lava lamp, liquid light, tie-dye, paisley, spirograph |
 | 0 | Sci-fi | Hologram globe, radar sweep (with real satellites if the orbit feed is running), hyperspace, planet scan, reactor core, ship's computer |
-| , and . | Computers | Classic computing: a front panel of switches and lamps with a program being toggled in, oscilloscope figures, a hex dump spiralling out, a boot screen, a circuit board, a Nixie tube clock, a one-line cellular automaton, and a packet network round the globe |
+| , and . | Computers | Classic computing: a front panel of switches and lamps with a program being toggled in, oscilloscope figures, a scrolling assembler listing, a circuit board, core memory, a packet network round the globe, and a globe of blinking lamp panels |
 | , and . | Hypnotic | Tesseract, quasicrystal, moire, Fibonacci globe, Truchet maze, hypno spiral, tunnel, pendulum, breathing hexagons, geodesic sphere |
-| , and . | Sports balls | The globe as a ball, rolling: football, basketball, tennis, cricket, baseball, volleyball, golf, pool 8-ball, beach ball, bowling ball |
+| , and . | Sports balls | The globe as a ball, rolling: football, basketball, tennis, cricket, baseball, volleyball, golf, pool 8-ball, beach ball, bowling ball, and two plastic puzzles that solve themselves: a puzzle cube (2x2 to 5x5) and a megaminx |
 | , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, starfield, pixel planet, Rim Pong, Rim defender, radial falling blocks, 16-colour plasma, tape loading, pixel fire. The three games play themselves across the whole dome |
+| , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a motion tracker, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -69,8 +70,9 @@ See the [gallery](#gallery) for each scene on the globe.
 | ![Death Star](docs/screenshots/deathstar.jpg)<br>Death Star | ![Planet](docs/screenshots/planet.jpg)<br>Planet | ![Plasma](docs/screenshots/plasma.jpg)<br>Plasma |
 | ![Julia](docs/screenshots/julia.jpg)<br>Julia | ![Kaleidoscope](docs/screenshots/kaleido.jpg)<br>Kaleidoscope | ![Game of Life](docs/screenshots/life.jpg)<br>Game of Life |
 | ![Moon tonight](docs/screenshots/moon.jpg)<br>Moon tonight | ![Orbit watch](docs/screenshots/orbit.jpg)<br>Orbit watch | ![Groovy](docs/screenshots/groovy.jpg)<br>Groovy |
-| ![Sci-fi](docs/screenshots/scifi.jpg)<br>Sci-fi | ![Hypnotic](docs/screenshots/hypno.jpg)<br>Hypnotic | ![Sports balls](docs/screenshots/balls.jpg)<br>Sports balls |
-| ![8-bit retro](docs/screenshots/retro.jpg)<br>8-bit retro | ![Calibration grid](docs/screenshots/calibration.jpg)<br>Lens grid | |
+| ![Sci-fi](docs/screenshots/scifi.jpg)<br>Sci-fi | ![Computers](docs/screenshots/computers.jpg)<br>Computers | ![Hypnotic](docs/screenshots/hypno.jpg)<br>Hypnotic |
+| ![Sports balls](docs/screenshots/balls.jpg)<br>Sports balls | ![8-bit retro](docs/screenshots/retro.jpg)<br>8-bit retro | ![Retro screen](docs/screenshots/screen.jpg)<br>Retro screen |
+| ![Calibration grid](docs/screenshots/calibration.jpg)<br>Lens grid | | |
 
 Photos of the real globe, taken in a dark room with the phone's exposure
 turned down a little so the colours don't burn out.
@@ -93,7 +95,7 @@ hemisphere/
   scenes/julia.c           4   scenes/groovy.c   9
   scenes/kaleido.c         5   scenes/scifi.c    0
   scenes/computers.c       the rest are on , and .:
-  scenes/hypno.c, balls.c, retro.c
+  scenes/hypno.c, balls.c, retro.c, screen.c
   third_party/stb_image.h  JPEG/PNG loader (public domain, single header)
   textures/                planet and moon maps go here
   data/                    live data from the orbit feed (created by it)
@@ -101,6 +103,7 @@ hemisphere/
   tools/orbitfeed.py       live satellite and earthquake data
   tools/orbitfeed.service  runs the feed at boot
   tools/remote/app.py      the web remote (Flask) and its API
+  tools/remote/playlist.py the remote's playlist (runs in the background)
   tools/remote/static/     the remote's page
   tools/remote/remote.service  runs the remote at boot
   tools/requirements.txt   Python packages for the tools
@@ -248,6 +251,7 @@ Settings are kept in files next to the program, in groups:
 | `hypno.cfg` | Hypnotic | Hypnotic (, and .) | Style, colours, speed, scale |
 | `balls.cfg` | Sports balls | Sports balls (, and .) | Ball, roll, shine |
 | `retro.cfg` | 8-bit retro | 8-bit retro (, and .) | Style, speed, pixel size, pixel gaps |
+| `screen.cfg` | Retro screen | Retro screen (, and .) | Style, speed, text |
 
 In a scene, TAB steps through the six view settings first (`pitch`,
 `tilt`, `wobble`, `rev_secs`, `res`, `view_dist`) and then that scene's
@@ -374,20 +378,15 @@ mirror ball and glam stars were dropped; an old `groovy.cfg` just opens on
 a different style.)
 
 **Computers settings:** `style` (**N**: 0 front panel, 1 oscilloscope, 2
-hex dump, 3 boot screen, 4 circuit board, 5 Nixie clock, 6 cellular rule,
-7 packet network), `speed`, `phosphor` (**M**: the screen colour of the
-oscilloscope, hex dump and boot screen: 0 green, 1 amber, 2 white), `text`
-(labels and readouts), `bright`. It has no number key: press `,` or `.`
-to reach it, or pick it on the web remote. The front panel's switches are
-toggled one at a time to load an address and deposit a short made-up
-program, word by word, which then runs with the lamps flickering before it
-halts and starts again. The Nixie clock shows the Pi's local time across
-the middle, the date above and a tenths counter below, and a crown of
-small tubes round the rim; for the first two seconds of every minute every
-tube rolls through its digits. The cellular rule prints one generation of
-a one-line automaton per ring, newest at the rim, cycling through rules
-30, 90, 110, 150, 45, 73, 105 and 22 every 26 seconds. Only the packet
-network turns with the globe.
+code listing, 3 circuit board, 4 core memory, 5 packet network, 6
+blinkenlights), `speed`, `phosphor` (**M**: the screen colour of the
+oscilloscope and code listing: 0 green, 1 amber, 2 white), `text` (labels
+and readouts), `bright`. It has no number key: press `,` or `.` to reach
+it, or pick it on the web remote. The front panel's switches are toggled
+one at a time to load an address and deposit a short made-up program, word
+by word, which then runs with the lamps flickering before it halts and
+starts again. Core memory, blinkenlights and the packet network turn with
+the globe; the rest face you.
 
 **Hypnotic settings:** `style` (**N**: 0 tesseract, 1 quasicrystal, 2 moire,
 3 Fibonacci globe, 4 Truchet maze, 5 hypno spiral, 6 tunnel, 7 pendulum, 8
@@ -404,8 +403,16 @@ with the globe; the rest face you.
 
 **Sports balls settings:** `style` (**N**: 0 football, 1 basketball, 2
 tennis, 3 cricket, 4 baseball, 5 volleyball, 6 golf, 7 pool 8-ball, 8 beach
-ball, 9 bowling ball), `roll` (tumbling end over end on top of the spin),
-`bright`, `shine` (the highlight). The football is the real solid, a
+ball, 9 bowling ball, 10 puzzle cube, 11 megaminx), `roll` (tumbling end
+over end on top of the spin), `bright`, `shine` (the highlight), `size` (the
+puzzle cube's layers: 2 to 5, or 1 for a different size each time it mixes
+itself up). The puzzles are blown up
+into a ball, glossy stickers on black plastic: they start mixed up, solve
+themselves a turn at a time, glint when they're done, then mix themselves
+up again. The megaminx is the twelve-sided puzzle, with straight-edged
+pieces. (The "solve" is a replay: each puzzle undoes its own mixing moves in
+reverse rather than working out a solution, and mixes itself with enough
+turns to look properly mixed for its size.) The football is the real solid, a
 truncated icosahedron: every point belongs to whichever face plane it
 reaches first. The tennis and baseball seams follow the curve where height
 equals x squared minus y squared.
@@ -425,6 +432,24 @@ robot leads its shots and dodges incoming fire. Radial blocks is a falling-block
 fall inwards towards the centre and a full ring clears. Its robot tries
 every sector and turn for each piece and picks the flattest result. The
 aliens, ship and pictures are made up for this program.
+
+**Retro screen settings:** `style` (**N**: 0 defence command, 1 noughts
+and crosses, 2 cyborg HUD, 3 motion tracker, 4 ship's terminal, 5 light
+grid, 6 closedown), `speed`, `text` (the readouts round
+the rim), `bright`. It has no number key: press `,` or `.` to reach it, or
+pick it on the web remote. Defence command draws the coastlines from the
+Earth map in `textures/` (made-up continents if there isn't one), holds the
+globe over the North Atlantic so Europe and North America face you, and runs
+a 66-second simulation from DEFCON 5 to 1 that ends with no winner. In
+noughts and crosses both sides play perfectly, so every game is a draw; the
+score sits under the middle board, and at the end the boards dim and the
+verdict comes up in the middle. The
+light-cycles are four small robots that turn towards open space; one that
+hits a trail crashes, its trail fades and it comes back. The closedown runs
+colour bars, a test card, the caption, static, then the picture collapses to
+a dot. Text in this scene is drawn by the shader from a font texture rather
+than as dots, which keeps it quick on the Pi. All original designs in the
+spirit of the era.
 
 **Sci-fi settings:** `style` (**N** steps through them: 0 hologram globe,
 1 radar sweep, 2 hyperspace, 3 planet scan, 4 reactor core, 5 ship's
@@ -473,6 +498,19 @@ slider for every setting of the scene you're on. Numbered choices show
 their names (`theme 1 · fire`). It also shows the frame rate and whether
 the orbit feed is live.
 
+**Playlist.** The remote can run the dome by itself, moving through a list
+of scenes and styles. Build the list on the page: pick a scene and a style
+and press **Add**, or **Add all its styles**, or **Add everything**; tick
+items on and off, reorder them with the arrows, and give any item its own
+time. Then choose the order (**each in turn**, **shuffle**, which shows each
+item once per round, or **random**), how long each item stays up, how much
+to vary that by at random, and how long to wait after you pick something by
+hand before carrying on (0 to carry straight on). **Start playlist** and it
+keeps going with no browser open, and picks up again after a reboot; **Back**
+and **Skip** move along now. The list is saved in `playlist.json` in the
+hemisphere folder as you edit it. It sets the style without saving it, so
+press Save only if you want to keep what's showing.
+
 ```bash
 cd ~/hemisphere
 venv/bin/pip install -r tools/requirements.txt     # adds Flask
@@ -502,6 +540,10 @@ internet. `DOME_CTL_PORT` changes the port (0 turns it off).
 | `POST /api/key` | `{"key": "n"}` | Press a key: letters, digits, `,` `.`, `space`, `up`, `down` |
 | `POST /api/setting` | `{"name": "speed", "value": 2.5}` | Set a setting of the current scene or view |
 | `POST /api/save` | | Save all settings files, like pressing S |
+| `GET /api/catalog` | | Every scene, with the setting that picks its style (style, view or theme) and its range |
+| `GET /api/playlist` | | The playlist and what it's showing now |
+| `POST /api/playlist` | the whole playlist | Replace it (the format is described in `tools/remote/playlist.py`) |
+| `POST /api/playlist/skip` | `{"step": 1}` | Next item now (`-1` goes back) |
 
 For example: `curl -X POST -H 'Content-Type: application/json' -d '{"scene":6}' http://raspberrypi.local:5000/api/scene`
 switches to the Moon.
@@ -679,7 +721,7 @@ don't have this problem.
 | P / H | Print all settings / the key list |
 | SPACE | Pause rotation |
 | UP / DOWN | Faster / slower rotation |
-| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro), map (planet) or view (orbit watch). Death Star: denser dots |
+| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro, Retro screen), map (planet) or view (orbit watch). Death Star: denser dots |
 | M | Hypnotic: next colours. Computers: phosphor colour. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: sparser dots |
 | C | Life: reseed |
 | I / K | Death Star: dish shallower / deeper |
