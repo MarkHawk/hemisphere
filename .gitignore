@@ -28,6 +28,7 @@ groovybaby.cfg
 scifi.cfg
 computers.cfg
 screen.cfg
+weather.cfg
 
 # the web remote's playlist, made on the Pi
 playlist.json
