@@ -36,7 +36,7 @@ write it up (see [Debugging notes](#debugging-notes)).
 I built it with AI-assisted tooling (Claude Code). I directed the work,
 tested every change on the real display, and did the calibration myself.
 
-Fifteen scenes come with it. The first ten are on the number keys; the
+Sixteen scenes come with it. The first ten are on the number keys; the
 rest are on `,` and `.` and the web remote.
 
 | Key | Scene | What it shows |
@@ -54,8 +54,9 @@ rest are on `,` and `.` and the web remote.
 | , and . | Computers | Classic computing: a front panel of switches and lamps with a program being toggled in, oscilloscope figures, a scrolling assembler listing, a circuit board, core memory, a packet network round the globe, and a globe of blinking lamp panels |
 | , and . | Hypnotic | Tesseract, quasicrystal, moire, Fibonacci globe, Truchet maze, hypno spiral, tunnel, pendulum, breathing hexagons, geodesic sphere |
 | , and . | Sports balls | The globe as a ball, rolling: football, basketball, tennis, cricket, baseball, volleyball, golf, pool 8-ball, beach ball, bowling ball, and two plastic puzzles that solve themselves: a puzzle cube (2x2 to 5x5) and a megaminx |
-| , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, starfield, pixel planet, Rim Pong, Rim defender, radial falling blocks, 16-colour plasma, tape loading, pixel fire. The three games play themselves across the whole dome |
+| , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, starfield, pixel planet, a maze chase, Rim defender, Asteroids on a globe, 16-colour plasma, tape loading, pixel fire. The three games are full games that play themselves across the whole dome |
 | , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a motion tracker, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
+| , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -252,6 +253,7 @@ Settings are kept in files next to the program, in groups:
 | `balls.cfg` | Sports balls | Sports balls (, and .) | Ball, roll, shine |
 | `retro.cfg` | 8-bit retro | 8-bit retro (, and .) | Style, speed, pixel size, pixel gaps |
 | `screen.cfg` | Retro screen | Retro screen (, and .) | Style, speed, text |
+| `weather.cfg` | Weather | Weather (, and .) | Style, home, zoom, clouds, coasts, storm speed |
 
 In a scene, TAB steps through the six view settings first (`pitch`,
 `tilt`, `wobble`, `rev_secs`, `res`, `view_dist`) and then that scene's
@@ -284,24 +286,27 @@ The Moon, and the text in the Moon and orbit watch, follow `pitch` and
 `tilt` but never spin. The lava lamp, the sunshine face, smiley rain and rainbow face, radar, hyperspace and ship's computer
 are drawn square to the dome, ignoring the view settings.
 
-**Death Star settings:**
+**Death Star settings:** the scene opens with the wireframe zooming out from a
+single dot at the centre of the dome until it fills the globe, then the hull
+fades in; **Z** replays this and **C** cycles the wireframe colour.
 
 | Setting | What it does |
 |---------|--------------|
-| `hull` | Brightness of the solid hull. 0 gives the original wireframe-only look |
-| `panels` | Contrast of the hull plating |
-| `panel_h` | Height of the hull plates in degrees (3 by default) |
-| `panel_w` | Width of the hull plates in degrees at the equator (3 by default); plates keep this width towards the poles |
-| `seam_y` | A heavier seam every this many bands of plates (4 by default, 0 for none) |
-| `seam_x` | A heavier seam every this many plates along a band (6 by default, 0 for none) |
-| `lines` | Brightness of the green grid. 0 gives a solid model with no grid |
-| `trail` | Strength of the faint motion trail (0 for off) |
-| `dot_size` | Size of each dot in pixels |
-| `dot_sp` | Gap between dots along each line (smaller looks more solid) |
-| `dish_dep` | Depth of the superlaser dish, as a fraction of the globe's radius |
-| `grid_deg` | Spacing of the surface grid in degrees |
-| `pole_dim` | Dims the lines towards the poles (0 even, 1 the classic banded look) |
-| `dish_lat` | Where the dish sits: negative is the bottom half, positive the top half |
+| `style` | 0 wireframe only, 1 hull and wireframe, 2 wireframe fades to hull after `wire_out` seconds, 3 hull only |
+| `phosphor` | Wireframe colour: 0 green, 1 orange, 2 blue, 3 white (**C** cycles) |
+| `lines` | Wireframe brightness. 0 gives a solid model with no grid |
+| `dot_size` | Wireframe line thickness in pixels (**N**/**M** thinner/thicker); the dots always join up |
+| `grid_deg` | Spacing of the wireframe grid in degrees |
+| `dish_dep` | Depth of the superlaser dish, as a fraction of the globe's radius (0.10 is like the film; **I**/**K** shallower/deeper) |
+| `hull` | Brightness of the solid hull |
+| `detail` | Small hull detail: sub-plates, raised blocks, grooves (0 for plain plates) |
+| `windows` | Brightness of the small lit windows, seen best on the dark side |
+| `intro` | Zoom out from a dot when the scene starts (1 is on; **Z** replays it) |
+| `intro_s` | Seconds the zoom out takes |
+| `wire_out` | Style 2 only: seconds after the start when the wireframe fades away |
+
+The hull's panelling, panel size, seams, dish position and pole dimming are
+now Mark's chosen look, fixed in the code rather than adjustable settings.
 
 **Planet settings:** `bright`, `sun` (0 lit all over, 1 sharp night side),
 `night` (how much of the night side shows), `atmos` (rim glow), `bands`
@@ -379,8 +384,8 @@ a different style.)
 
 **Computers settings:** `style` (**N**: 0 front panel, 1 oscilloscope, 2
 code listing, 3 circuit board, 4 core memory, 5 packet network, 6
-blinkenlights), `speed`, `phosphor` (**M**: the screen colour of the
-oscilloscope and code listing: 0 green, 1 amber, 2 white), `text` (labels
+blinkenlights), `speed`, `phosphor` (**M**: one screen colour for every
+style, 0 green, 1 amber, 2 white, or 3 full colour, the default), `text` (labels
 and readouts), `bright`. It has no number key: press `,` or `.` to reach
 it, or pick it on the web remote. The front panel's switches are toggled
 one at a time to load an address and deposit a short made-up program, word
@@ -418,20 +423,34 @@ reaches first. The tennis and baseball seams follow the curve where height
 equals x squared minus y squared.
 
 **8-bit retro settings:** `style` (**N**: 0 digital rain, 1 copper bars, 2
-starfield, 3 pixel planet, 4 Rim Pong, 5 Rim defender, 6 radial blocks, 7
+starfield, 3 pixel planet, 4 maze chase, 5 Rim defender, 6 Asteroids, 7
 16-colour plasma, 8 tape loading, 9 pixel fire), `speed`, `scale` (pixel
-size), `bright`, `grid` (show the gaps between pixels). The three games use
-the whole dome, with the rim as the edge of play, and each is played by a
-small robot in C. In Rim Pong two bats circle the rim, each guarding half
-of it. In Rim defender the ship circles the rim with rapid fire, shooting
-inwards at aliens that spiral out from a hive at the centre in groups and
-fire back. The ship explodes if it is hit or an alien reaches the rim
-beside it; there are three lives, a score and high score, and waves that
-get faster, with GAME OVER and a fresh game when the lives run out. Its
-robot leads its shots and dodges incoming fire. Radial blocks is a falling-block game on rings: pieces
-fall inwards towards the centre and a full ring clears. Its robot tries
-every sector and turn for each piece and picks the flattest result. The
-aliens, ship and pictures are made up for this program.
+size), `bright`, `grid` (show the gaps between pixels). The three games are
+full games, each played by a small robot in C, with lives, a score and high
+score, levels that get harder, and GAME OVER then a fresh game.
+
+* **Maze chase:** an original maze game. A little round robot clears the
+  dots while four spiky chasers hunt it, each in its own way (one chases,
+  one heads it off, one flanks, one wanders). Power cells turn them blue
+  for a while so the robot can eat them; bonus prizes appear twice a level.
+  The robot stays in the middle of the dome and the maze slides round it,
+  repeating left and right so the side tunnel carries straight on. Levels
+  get faster and there is an extra life at 10,000. The hidden treat:
+  clear level 4 and level 5 is the planet maze, the whole maze laid over a
+  small dark planet that turns under the robot, with every point doubled. The robot is an expert: it tries each way a couple of seconds
+  ahead, with the chasers moving as they really would, so it usually gets
+  well past level 10 before it slips up.
+* **Rim defender:** the ship circles the rim with rapid fire, shooting
+  inwards at aliens that spiral out from a hive at the centre in groups and
+  fire back. The robot leads its shots and dodges incoming fire.
+* **Asteroids:** the whole globe is the playfield, so rocks and shots
+  travel round the sphere and come back over the horizon, and the view
+  follows the ship. Big rocks split into medium and then small ones;
+  saucers turn up and shoot (the small one aims). The robot aims ahead,
+  thrusts clear of trouble and jumps to hyperspace in a tight spot. An
+  extra ship every 10,000 points.
+
+The aliens, ships and pictures are made up for this program.
 
 **Retro screen settings:** `style` (**N**: 0 defence command, 1 noughts
 and crosses, 2 cyborg HUD, 3 motion tracker, 4 ship's terminal, 5 light
@@ -451,6 +470,36 @@ a dot. Text in this scene is drawn by the shader from a font texture rather
 than as dots, which keeps it quick on the Pi. All original designs in the
 spirit of the era.
 
+**Weather settings:** `style` (**N**: 0 live clouds, 1 infrared, 2 over
+home, 3 aurora, 4 storms), `speed` (the drift and shimmer), `home_lat` and
+`home_lon`, `zoom` (over home: 1, the default, shows the whole side of
+the Earth round home; up to 6 zooms in), `drift` (clouds still or drifting with
+the prevailing winds: trade winds west, westerlies east, a made-up motion
+between the real three-hourly pictures), `cloud_op` (how thick the clouds
+look), `coast` (coastlines glowing through the clouds), `lights` (city
+lights), `storm_speed` (hours of storm per second), `storm_zoom` (1, the
+default, shows the whole side of the Earth; up to 4 zooms in on the
+storm), `text`, `bright`. It
+has no number key: press `,` or `.` or pick it on the web remote. It needs
+`tools/orbitfeed.py` running (see below) for its data.
+
+* **Live clouds:** the Earth turning with real day and night and city
+  lights, the latest clouds lit by the Sun, coastlines glowing through.
+* **Infrared:** the same clouds coloured like a forecaster's enhanced
+  infrared picture, brightest and highest tops in red and white. It is a
+  look made from how bright the clouds are, not measured temperatures.
+* **Over home:** zoomed in on home (`home_lat`, `home_lon`; orbitfeed reads
+  them from `weather.cfg` and cuts out the sharper picture round them), with
+  a marker on home and a faint 5-degree grid.
+* **Aurora:** looking down on the North Pole, the aurora oval from NOAA's
+  30-minute forecast, shimmering green (red where it is strongest), brighter
+  on the night side.
+* **Storms:** one famous storm after another (Gilbert, Andrew, Katrina,
+  Haiyan, Patricia, Irma, Maria, Ophelia, Dorian, Lorenzo, Idai, Ian, Milton
+  and more) from NOAA's IBTrACS archive. The view follows the storm as its
+  track is drawn, coloured by strength from depression to category 5, with
+  the name, category, wind and date.
+
 **Sci-fi settings:** `style` (**N** steps through them: 0 hologram globe,
 1 radar sweep, 2 hyperspace, 3 planet scan, 4 reactor core, 5 ship's
 computer, with five rings of hex readouts out to the rim), `speed`, `scale`, `range` (radar range in km), `home_lat` and
@@ -467,6 +516,13 @@ Orbit watch needs `tools/orbitfeed.py` running. It downloads satellite orbits
 from CelesTrak twice a day and earthquakes from the USGS every five
 minutes, works out every satellite's position every five seconds with the
 SGP4 orbit model, and writes small files to `data/` that the scene reads.
+It also fetches the data for the Weather scene: a map of the world's clouds
+every three hours (2048 x 1024, plus a sharper 4096 x 2048 one, cut down
+to the area round home, which needs Pillow), NOAA's aurora forecast every
+half hour, and, about once a month, the famous storms picked out of NOAA's
+best-track archive. That last one is a big download, so it runs in the
+background and the storms style says so until it is done. Start the feed
+with `--no-weather` to skip all of it.
 If the network drops, it carries on with what it last downloaded. Without
 the feed, or if its data is more than a minute old, the scene still shows
 the Earth and says "NO LIVE DATA" across the equator. The radar in the
@@ -721,10 +777,11 @@ don't have this problem.
 | P / H | Print all settings / the key list |
 | SPACE | Pause rotation |
 | UP / DOWN | Faster / slower rotation |
-| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro, Retro screen), map (planet) or view (orbit watch). Death Star: denser dots |
-| M | Hypnotic: next colours. Computers: phosphor colour. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: sparser dots |
-| C | Life: reseed |
+| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro, Retro screen, Weather), map (planet) or view (orbit watch). Death Star: thinner lines |
+| M | Hypnotic: next colours. Computers: phosphor colour. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: thicker lines |
+| C | Life: reseed. Death Star: cycle phosphor colour |
 | I / K | Death Star: dish shallower / deeper |
+| Z | Death Star: replay the intro zoom |
 | ESC | Quit |
 
 **In the SSH window:** UP/DOWN pick a setting, LEFT/RIGHT adjust it, `[`
@@ -854,5 +911,9 @@ These environment variables are for testing and previewing:
 * Satellite orbits from [CelesTrak](https://celestrak.org), worked out
   with the [sgp4](https://pypi.org/project/sgp4/) library; earthquakes from
   the [USGS](https://earthquake.usgs.gov).
+* Live clouds: [Matt Eason's live cloud maps](https://github.com/matteason/live-cloud-maps)
+  (CC0). Contains modified EUMETSAT data.
+* Aurora forecast: [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/products/aurora-30-minute-forecast) (OVATION model).
+* Storm tracks: [NOAA NCEI IBTrACS](https://www.ncei.noaa.gov/products/international-best-track-archive), version 4.
 
 Built with AI-assisted tooling (Claude Code).
