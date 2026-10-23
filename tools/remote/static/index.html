@@ -67,6 +67,15 @@
   .item .mv button { min-height: 34px; padding: 4px 7px; text-align: center; }
   .add { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
   .empty { color: var(--dim); font-size: 13px; padding: 10px 2px; }
+  .tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; margin: 14px -16px 0;
+    padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; text-align: center; min-height: 42px; padding: 8px; font-weight: 600; }
+  .tabs button.cur { background: #17303b; }
+  .tabs .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px;
+    background: var(--good); vertical-align: middle; visibility: hidden; }
+  .tabs .dot.on { visibility: visible; }
+  .mini { color: var(--dim); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .mini b { color: var(--text); font-weight: 600; }
   .offline { color: var(--dim); background: var(--panel); border: 1px dashed var(--line);
     border-radius: 10px; padding: 14px; margin-top: 18px; display: none; }
 </style>
@@ -84,6 +93,13 @@
     <code>cd ~/hemisphere &amp;&amp; DISPLAY=:0 ./hemisphere</code>; on Windows:
     <code>tools\windows\start-hemisphere.ps1</code>) and this page will pick it up.</div>
 
+  <nav class="tabs">
+    <button id="tab-b-display" data-tab="display">Display</button>
+    <button id="tab-b-playlist" data-tab="playlist">Playlist<span class="dot" id="pl-dot"></span></button>
+  </nav>
+
+  <section id="tab-display">
+  <div class="mini" id="pl-mini"></div>
   <h2>Scenes</h2>
   <div class="grid" id="scenes"></div>
 
@@ -102,6 +118,9 @@
     <button data-key="up">Faster</button>
   </div>
 
+  </section>
+
+  <section id="tab-playlist" hidden>
   <h2>Playlist</h2>
   <div class="pl-status" id="pl-status">Loading…</div>
   <div class="row">
@@ -131,6 +150,9 @@
     <button id="pl-add-all">Add everything</button>
     <button id="pl-clear">Clear list</button>
   </div>
+  </section>
+
+  <section id="tab-display2">
 
   <h2 id="scene-h">Scene settings</h2>
   <div id="scene-set"></div>
@@ -150,11 +172,25 @@
     <p class="keys" style="margin-top:10px">On a grid, the settings above become the
       calibration. Save when it's right.</p>
   </details>
+  </section>
 </main>
 <div class="toast" id="toast"></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
+
+// ---- tabs: Display (scenes, controls, settings) and Playlist ----------
+function showTab(t) {
+  if (t !== "playlist") t = "display";
+  $("tab-display").hidden = $("tab-display2").hidden = t !== "display";
+  $("tab-playlist").hidden = t !== "playlist";
+  $("tab-b-display").classList.toggle("cur", t === "display");
+  $("tab-b-playlist").classList.toggle("cur", t === "playlist");
+  try { localStorage.setItem("hemi-tab", t); } catch (e) { /* no storage */ }
+}
+document.querySelectorAll(".tabs button").forEach((b) =>
+  b.addEventListener("click", () => { showTab(b.dataset.tab); window.scrollTo(0, 0); }));
+try { showTab(localStorage.getItem("hemi-tab")); } catch (e) { showTab("display"); }
 let state = null, dragging = null, lastKey = "";
 
 function toast(msg, good) {
@@ -332,6 +368,10 @@ function plStatus(st) {
   else if (st.held > 0) msg = `Paused for ${st.held} s because you picked something · then on with the list`;
   else msg = `Playing <b></b>` + (st.next_in !== null ? ` · next in ${st.next_in} s` : "");
   $("pl-status").innerHTML = msg;
+  $("pl-dot").classList.toggle("on", pl.enabled);
+  $("pl-mini").innerHTML = pl.enabled ? "Playlist: " + msg : "";
+  const mb = $("pl-mini").querySelector("b");
+  if (mb) mb.textContent = st.current || "";
   const b = $("pl-status").querySelector("b");
   if (b) b.textContent = st.current || "…";
   [...$("pl-items").children].forEach((row, i) => row.classList && row.classList.toggle("cur", pl.enabled && i === st.index));
