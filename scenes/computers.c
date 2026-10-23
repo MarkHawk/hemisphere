@@ -38,15 +38,15 @@ static const char *NAMES[NSTYLE] = {
 };
 
 static struct { float style, speed, phosphor, text, bright; } L =
-    { 0.0f, 1.0f, 0.0f, 1.0f, 1.0f };
+    { 0.0f, 1.0f, 3.0f, 1.0f, 1.0f };
 
 static Param P[] = {
     { "style",    &L.style,    1.0f, 0.0f, 6.0f, 0,
       "0 front panel, 1 oscilloscope, 2 code listing, 3 circuit board, 4 core memory, "
       "5 network, 6 blinkenlights (N)" },
     { "speed",    &L.speed,    0.1f, 0.0f, 4.0f, 0, "speed of the animation" },
-    { "phosphor", &L.phosphor, 1.0f, 0.0f, 2.0f, 0,
-      "screen colour for the oscilloscope and code listing: 0 green, 1 amber, 2 white (M)" },
+    { "phosphor", &L.phosphor, 1.0f, 0.0f, 3.0f, 0,
+      "screen colour for every style: 0 green, 1 amber, 2 white, 3 full colour (M)" },
     { "text",     &L.text,     1.0f, 0.0f, 1.0f, 0, "labels and readouts: 0 off, 1 on" },
     { "bright",   &L.bright,   0.05f, 0.2f, 2.0f, 0, "brightness" },
 };
@@ -68,9 +68,24 @@ static void phosphor(float c[3])
     static const float PH[3][3] = {
         { 0.30f, 1.00f, 0.45f }, { 1.00f, 0.65f, 0.15f }, { 0.85f, 0.90f, 1.00f } };
     int i = (int)lroundf(L.phosphor);
-    if (i < 0 || i > 2) i = 0;
+    if (i < 0 || i > 2) i = 0;            /* full colour: green screens */
     memcpy(c, PH[i], sizeof PH[i]);
 }
+
+static int mono(void) { int i = (int)lroundf(L.phosphor); return i >= 0 && i <= 2; }
+
+/* every dot goes through here, so a single-colour screen tints them all */
+static void cpush(DomePoints *p, float x, float y, float z, float r, float g, float b, float a)
+{
+    if (mono()) {
+        float c[3], m = fmaxf(r, fmaxf(g, b));
+        float l = fminf(1.0f, m * 0.7f + (r * 0.30f + g * 0.59f + b * 0.11f) * 0.5f);
+        phosphor(c);
+        r = c[0] * l; g = c[1] * l; b = c[2] * l;
+    }
+    dome_points_push(p, x, y, z, r, g, b, a);
+}
+#define dome_points_push cpush
 
 /* A point of a flat drawing (radius 1 = RIM_DEG from the centre) onto
  * the dome, in DOME space: the drawing faces you, +y up. */
@@ -940,7 +955,28 @@ static void restart(int s)
 
 static void init(void)
 {
-    for (int i = 0; i < NSTYLE; i++) g_prog[i] = dome_surface_program_themed(GLSL[i]);
+    /* each style's surface() is renamed and wrapped, so a single-colour
+     * screen (phosphor 0 to 2) tints everything it draws */
+    static const char WRAP[] =
+        "uniform float u_mono;\n"
+        "vec4 surface(vec3 dir, vec3 view){\n"
+        "  vec4 c = surf0__(dir, view);\n"
+        "  if (u_mono > 0.5) {\n"
+        "    float m = max(c.r, max(c.g, c.b));\n"
+        "    float l = min(1.0, m * 0.7 + dot(c.rgb, vec3(0.30, 0.59, 0.11)) * 0.5);\n"
+        "    c.rgb = u_ph * l;\n"
+        "  }\n"
+        "  return c;\n"
+        "}\n";
+    for (int i = 0; i < NSTYLE; i++) {
+        size_t n = strlen(GLSL[i]) + sizeof WRAP + 1;
+        char *src = malloc(n);
+        snprintf(src, n, "%s%s", GLSL[i], WRAP);
+        char *at = strstr(src, "vec4 surface(");
+        if (at) memcpy(at + 5, "surf0__", 7);
+        g_prog[i] = dome_surface_program_themed(src);
+        free(src);
+    }
     dome_points_init(&g_pts, 20000);
     dome_points_init(&g_txt, 20000);
     dome_points_init(&g_wires, 20000);
@@ -1010,6 +1046,12 @@ static void draw(const DomeFrame *f)
     int s = style();
     if (s != g_cur_style) { g_cur_style = s; restart(s); }
     GLuint p = g_prog[s];
+    static float last_ph = -1;
+    if (L.phosphor != last_ph) {           /* colour changed: rebuild the dots */
+        if (last_ph >= 0) restart(s);
+        last_ph = L.phosphor;
+        g_txt_style = -1;
+    }
     float ph[3];
     phosphor(ph);
     float ua = 0, ub = 0;
@@ -1024,6 +1066,7 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_a"), ua);
     glUniform1f(glGetUniformLocation(p, "u_b"), ub);
     glUniform3f(glGetUniformLocation(p, "u_ph"), ph[0], ph[1], ph[2]);
+    glUniform1f(glGetUniformLocation(p, "u_mono"), mono() ? 1.0f : 0.0f);
     if (s == 0) {
         bytes3(p, "u_addr", g_pan.addr);
         bytes3(p, "u_data", g_pan.data);
@@ -1077,9 +1120,9 @@ static int key(SDL_Keycode k, int shift)
 {
     (void)shift;
     if (k == SDLK_m) {
-        L.phosphor = (float)(((int)lroundf(L.phosphor) + 1) % 3);
-        g_txt_style = -1;
-        printf("Computers: %s phosphor\n", L.phosphor < 0.5f ? "green" : L.phosphor < 1.5f ? "amber" : "white");
+        static const char *PN[4] = { "green", "amber", "white", "full colour" };
+        L.phosphor = (float)(((int)lroundf(L.phosphor) + 1) % 4);
+        printf("Computers: %s\n", PN[(int)L.phosphor]);
         return 1;
     }
     if (k != SDLK_n) return 0;
