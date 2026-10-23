@@ -104,6 +104,10 @@ void dome_points_upload(DomePoints *p);
 void dome_points_aperture(const float dir[3], float cos_half);
 void dome_draw_points(const DomePoints *p, const mat3 rot,
                       float alpha, float dot_size);
+/* Shrink everything drawn with points towards the dome centre, as if the
+ * globe were far away: k is its apparent size, 1 = normal (fills the dome),
+ * near 0 = a single dot. Reset to 1 at the start of every frame. */
+void dome_points_zoom(float k);
 
 /* ---- surface ------------------------------------------------------- */
 /* Build a surface program from the scene's GLSL, which must define

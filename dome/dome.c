@@ -350,6 +350,7 @@ GLuint dome_compile(const char *vs, const char *fs)
 /* ================================================================== */
 static GLuint g_point_prog;
 static float  g_ap_dir[3] = { 0, 0, 1 }, g_ap_cos = -2.0f;
+static float  g_zoom = 1.0f;
 static int    g_view_w, g_view_h;
 
 void dome_points_init(DomePoints *p, int max)
@@ -417,6 +418,11 @@ void dome_points_aperture(const float dir[3], float cos_half)
     g_ap_cos = cos_half;
 }
 
+void dome_points_zoom(float k)
+{
+    g_zoom = k < 0.001f ? 0.001f : k > 1.0f ? 1.0f : k;
+}
+
 #define U(name) glGetUniformLocation(prog, name)
 
 void dome_draw_points(const DomePoints *p, const mat3 rot,
@@ -440,6 +446,7 @@ void dome_draw_points(const DomePoints *p, const mat3 rot,
     glUniform1f(U("u_eye"), g_view.eye);
     glUniform3fv(U("u_ap_dir"), 1, g_ap_dir);
     glUniform1f(U("u_ap_cos"), g_ap_cos);
+    glUniform1f(U("u_zoom"), g_zoom);
     glUniform1f(U("u_alpha"), alpha);
     glUniform1f(U("u_psize"), dot_size);
     glBindBuffer(GL_ARRAY_BUFFER, p->vbo);
@@ -676,6 +683,7 @@ void dome_surface_begin(GLuint prog, const DomeFrame *f)
     glUniformMatrix3fv(U("u_rot_inv"), 1, GL_FALSE, inv);
     glUniform2f(U("u_size"), (float)g_map_w, (float)g_map_h);
     glUniform1f(U("u_time"), f->now);
+    glUniform1f(U("u_eye"), g_view.eye);          /* viewer distance, for parallax */
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_dirmap_tex);
     glUniform1i(U("u_dirmap"), 0);
@@ -1452,6 +1460,7 @@ int dome_run(int argc, char **argv, const char *title,
 
         float none[3] = { 0, 0, 1 };
         dome_points_aperture(none, -2.0f);
+        dome_points_zoom(1.0f);
         mat3 rot;
         if (mode == -2) {
             if (grid_spin) m3_rz(rot, spin); else m3_identity(rot);

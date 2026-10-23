@@ -21,6 +21,7 @@ static const char *POINT_VS =
     "uniform float u_eye;\n"      /* viewer distance, globe radii        */
     "uniform vec3  u_ap_dir;\n"   /* aperture centre, model space        */
     "uniform float u_ap_cos;\n"   /* cos of aperture half-angle (-2 off) */
+    "uniform float u_zoom;\n"     /* apparent size, 1 = fills the dome   */
     "uniform float u_alpha;\n"
     "uniform float u_psize;\n"
     "varying vec4  v_col;\n"
@@ -43,6 +44,16 @@ static const char *POINT_VS =
     "    if (dot(q, normalize(u_rot * u_ap_dir)) < u_ap_cos - 0.002) hidden = 1.0;\n"
     "  }\n"
     "  float phi   = acos(clamp(q.z, -1.0, 1.0));\n"
+    /* zoomed out: the globe seen from far away, a small ball at the dome
+     * centre. Only its near side shows; near the rim of the ball the
+     * spacing follows sin() so it looks round. At u_zoom = 1 this is the
+     * normal mapping. */
+    "  if (u_zoom < 0.9999) {\n"
+    "    if (phi > HALF_PI * (1.0 + u_zoom * u_zoom * u_zoom)) hidden = 1.0;\n"
+    "    float g = phi < HALF_PI ? HALF_PI * sin(phi) : phi;\n"
+    "    phi = u_zoom * mix(g, phi, u_zoom);\n"
+    "    phi_s = 0.0;\n"
+    "  }\n"
     "  float theta = atan(q.y, u_mirror * q.x) + u_turn;\n"
     "  float rho = u_radius * lens(phi) / lens(HALF_PI);\n"
     "  float f = phi / STEP30;\n"
