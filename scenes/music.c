@@ -29,6 +29,10 @@
  *                     with the bass, warming with the treble
  *  12 galaxy          two spiral arms of dots spinning with the tempo, the
  *                     core glowing with the bass
+ *  13 rain            streaks falling faster and thicker with the treble,
+ *                     splashing at the bottom rim
+ *  14 fireworks       beats launch shells that burst into drifting
+ *                     sparks
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -908,6 +912,133 @@ static void galaxy_points(const DomeFrame *f)
     pool_draw(f, NULL, 2.0f, 3.5f, 5.0f);
 }
 
+/* ---- 13: rain: streaks falling down the dome, faster and denser with
+ * the air bands, small splashes where they reach the bottom rim; a light
+ * drizzle when idle. Each drop has a fixed column, speed and place in its
+ * fall, moved on by the rain clock, so nothing per drop is stored. ---- */
+#define DROPS 520
+static float g_rain;
+
+static void rain_update(const DomeFrame *f)
+{
+    float air = f->audio.air * g_gain * L.react;
+    g_rain += f->dt * L.speed * (0.55f + 1.6f * air);
+}
+
+static void rain_points(const DomeFrame *f)
+{
+    float air = fminf(1.0f, f->audio.air * g_gain * L.react);
+    int n = 150 + (int)(370.0f * fmaxf(air, 0.0f));
+    float c[3], w[3];
+    theme_rgb(0.6f, c);
+    for (int k = 0; k < 3; k++) w[k] = c[k] + (1.0f - c[k]) * 0.7f;   /* pale */
+    float len = 0.035f + 0.07f * air;
+    pool_clear();
+    for (int i = 0; i < n && i < DROPS; i++) {
+        float x = hash3i(i, 1, 3) * 2.0f - 1.0f;
+        float sp = 0.8f + 0.4f * hash3i(i, 2, 3);
+        float y = 1.1f - fmodf(hash3i(i, 3, 3) + g_rain * sp * 0.45f, 1.0f) * 2.4f;
+        float yhit = -sqrtf(fmaxf(0.0f, 1.0f - x * x));
+        float a = 0.45f + 0.4f * hash3i(i, 4, 3);
+        if (y > yhit) {
+            if (x * x + y * y < 1.0f)
+                line_plane(SMALL, x, y, x, fminf(y + len * sp, sqrtf(fmaxf(0.0f, 1.0f - x * x))), w, a);
+        } else if (yhit - y < 0.08f) {
+            /* a splash: a few droplets thrown up and out, fading */
+            float d = (yhit - y) / 0.08f;
+            for (int k = -2; k <= 2; k++) {
+                if (k == 0) continue;
+                float sx = x + (float)k * 0.012f * d * 2.0f, sy = yhit + 0.025f * sinf(d * DOME_PI) * (3 - abs(k));
+                dot_plane(SMALL, sx, sy, w, a * (1.0f - d));
+            }
+        }
+    }
+    pool_draw(f, NULL, 2.0f, 3.0f, 4.0f);
+}
+
+/* ---- 14: fireworks: a beat launches a shell from the bottom rim (one
+ * every 1.1 s at most), which bursts into sparks that drift down and
+ * fade; two shells at most, and one every 6 to 10 s when idle. Each
+ * burst is local. ---- */
+typedef struct { int on; float x, y, vx, vy, hue; } Shell;
+static Shell g_shell[2];
+static float g_fw_last, g_fw_idle = 3.0f;
+
+static void fw_launch(void)
+{
+    for (int i = 0; i < 2; i++) {
+        Shell *s = &g_shell[i];
+        if (s->on) continue;
+        int seed = (int)(g_t * 100.0f);
+        s->on = 1;
+        s->x = (hash3i(seed, 1, 4) - 0.5f) * 0.9f;
+        s->y = -0.97f;
+        s->vx = (hash3i(seed, 2, 4) - 0.5f) * 0.2f;
+        s->vy = 1.25f + 0.25f * hash3i(seed, 3, 4);
+        s->hue = 0.25f * hash3i(seed, 4, 4);
+        g_fw_last = g_t;
+        return;
+    }
+}
+
+static void fireworks_update(const DomeFrame *f)
+{
+    float dt = f->dt * L.speed;
+    /* a beat launches a shell, one every 1.1 s at most, two in the air */
+    if (g_beat_now && g_t - g_fw_last > 1.1f) fw_launch();
+    g_fw_idle -= dt * (1.0f - g_live);
+    if (g_fw_idle <= 0.0f) { fw_launch(); g_fw_idle = 6.0f + 4.0f * hash3i((int)(g_t * 10.0f), 5, 4); }
+    for (int i = 0; i < 2; i++) {
+        Shell *s = &g_shell[i];
+        if (!s->on) continue;
+        s->vy -= 0.55f * dt;
+        s->x += s->vx * dt;
+        s->y += s->vy * dt;
+        if (s->vy < 0.15f) {                        /* burst */
+            s->on = 0;
+            for (int k = 0; k < 130; k++) {
+                Spark *p = spark_new();
+                float ang = hash3i(k, i, (int)(g_t * 50.0f)) * 2.0f * DOME_PI;
+                float v = 0.18f + 0.26f * sqrtf(hash3i(k, i + 7, (int)(g_t * 50.0f)));
+                p->x = s->x; p->y = s->y;
+                p->vx = v * cosf(ang); p->vy = v * sinf(ang);
+                p->max = p->life = 1.6f + 0.8f * hash3i(k, 3, 9);
+                p->hue = s->hue + 0.05f * hash3i(k, 4, 9);
+                p->size = hash3i(k, 5, 9);
+            }
+        }
+    }
+    sparks_move(dt, 0.9f, 0.0f, -0.18f);
+}
+
+static void fireworks_points(const DomeFrame *f)
+{
+    pool_clear();
+    for (int i = 0; i < SPARKS; i++) {
+        const Spark *s = &g_sp[i];
+        if (s->life <= 0.0f || s->x * s->x + s->y * s->y > 1.0f) continue;
+        float c[3], a = s->life / s->max;
+        theme_rgb(s->hue, c);
+        for (int k = 0; k < 3; k++) c[k] += (1.0f - c[k]) * 0.25f;
+        line_plane(SMALL, s->x, s->y, s->x - s->vx * 0.08f, s->y - s->vy * 0.08f, c, 0.6f * a);
+        dot_plane(s->size < 0.85f ? MID : LARGE, s->x, s->y, c, sqrtf(a));
+    }
+    float w[3] = { 1.0f, 0.9f, 0.7f };
+    for (int i = 0; i < 2; i++) {
+        const Shell *s = &g_shell[i];
+        if (!s->on) continue;
+        line_plane(SMALL, s->x, s->y, s->x - s->vx * 0.12f, s->y - s->vy * 0.12f, w, 0.6f);
+        dot_plane(MID, s->x, s->y, w, 0.9f);
+    }
+    pool_draw(f, NULL, 2.0f, 3.0f, 4.5f);
+}
+
+static void night_uniforms(GLuint p, const DomeFrame *f)
+{
+    (void)f;
+    glow_set(p, 0.6f, 0.05f, 3.0f);                  /* a faint sky glow */
+}
+
 /* ================================================================== */
 /* The table: one row per style, in N order                            */
 /* ================================================================== */
@@ -933,6 +1064,8 @@ static const Style STYLES[] = {
     { "bursts",        GLOW,    bursts_update,  glow_uniforms,    bursts_points },
     { "dot globe",     GLOW,    NULL,           glow_uniforms,    globe_points },
     { "galaxy",        GLOW,    galaxy_update,  galaxy_uniforms,  galaxy_points },
+    { "rain",          GLOW,    rain_update,    night_uniforms,   rain_points },
+    { "fireworks",     GLOW,    fireworks_update, night_uniforms, fireworks_points },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
@@ -942,7 +1075,7 @@ static Param P[] = {
     { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0,
       "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora, 5 radial bars, "
       "6 oscilloscope, 7 lissajous, 8 wire tunnel, 9 terrain, 10 bursts, 11 dot globe, "
-      "12 galaxy (N)" },
+      "12 galaxy, 13 rain, 14 fireworks (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
