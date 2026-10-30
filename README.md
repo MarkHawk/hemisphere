@@ -54,9 +54,10 @@ rest are on `,` and `.` and the web remote.
 | , and . | Computers | Classic computing: a front panel of switches and lamps with a program being toggled in, oscilloscope figures, a scrolling assembler listing, a circuit board, core memory, a packet network round the globe, and a globe of blinking lamp panels |
 | , and . | Hypnotic | Tesseract, quasicrystal, moire, Fibonacci globe, Truchet maze, hypno spiral, tunnel, pendulum, breathing hexagons, geodesic sphere |
 | , and . | Sports balls | The globe as a ball, rolling: football, basketball, tennis, cricket, baseball, volleyball, golf, pool 8-ball, beach ball, bowling ball, and two plastic puzzles that solve themselves: a puzzle cube (2x2 to 5x5) and a megaminx |
-| , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, starfield, pixel planet, a maze chase, Rim defender, Asteroids on a globe, 16-colour plasma, tape loading, pixel fire. The three games are full games that play themselves across the whole dome |
-| , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a motion tracker, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
+| , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, a rotozoomer, a lunar lander, a maze chase, Rim defender, Asteroids on a globe, 16-colour plasma, tape loading (a random picture each time, or your own photos), pixel fire. The four games are full games that play themselves across the whole dome |
+| , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, an air traffic globe, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
 | , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
+| , and . | Eyes | One big eye filling the dome, looking round the room, blinking, its pupil opening and closing: brown, blue, green and hazel human eyes, a cat, an owl, a reptile, and an original fire eye of glowing embers in an obsidian eyeball |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -253,6 +254,7 @@ Settings are kept in files next to the program, in groups:
 | `balls.cfg` | Sports balls | Sports balls (, and .) | Ball, roll, shine |
 | `retro.cfg` | 8-bit retro | 8-bit retro (, and .) | Style, speed, pixel size, pixel gaps |
 | `screen.cfg` | Retro screen | Retro screen (, and .) | Style, speed, text |
+| `eyes.cfg` | Eyes | Eyes (, and .) | Style, speed, how far it looks, blinks, lids, pupil size, shine |
 | `weather.cfg` | Weather | Weather (, and .) | Style, home, zoom, clouds, coasts, storm speed |
 
 In a scene, TAB steps through the six view settings first (`pitch`,
@@ -423,12 +425,38 @@ reaches first. The tennis and baseball seams follow the curve where height
 equals x squared minus y squared.
 
 **8-bit retro settings:** `style` (**N**: 0 digital rain, 1 copper bars, 2
-starfield, 3 pixel planet, 4 maze chase, 5 Rim defender, 6 Asteroids, 7
+rotozoomer, 3 lunar lander, 4 maze chase, 5 Rim defender, 6 Asteroids, 7
 16-colour plasma, 8 tape loading, 9 pixel fire), `speed`, `scale` (pixel
-size), `bright`, `grid` (show the gaps between pixels). The three games are
+size), `bright`, `grid` (show the gaps between pixels). The four games are
 full games, each played by a small robot in C, with lives, a score and high
 score, levels that get harder, and GAME OVER then a fresh game.
 
+* **Tape loading:** a home-computer screen loading off cassette, done the
+  way the real thing worked. The border shows the red and cyan pilot tone,
+  then the blue and yellow data; `Program: NAME` appears; then the picture
+  arrives in black on white in the real screen-memory order (in thirds, one
+  pixel line of every character row at a time), and the colours flood in
+  last. Each 8x8 cell has only two colours, so the colours clash at the
+  cell edges just as they did. Every load is a different picture, shuffled
+  so none repeats until all have been shown: eleven made-up ones built in
+  (lighthouse, castle, night city, pyramids, mountains, island, galleon,
+  spaceman, explorer, wizard, racer), plus any photos you put in a `tapes`
+  folder next to the program (`.jpg`, `.png`, `.bmp` or `.gif`; the file
+  name becomes the tape name; about 1024 pixels across is plenty, as big
+  files take a moment to read on a Pi 3). Photos are converted when they
+  load, so nothing needs preparing. The `tapes` folder is not committed.
+
+* **Rotozoomer:** the demo-scene classic. A made-up pixel tile (a framed
+  diamond gem on a chequer) turns and zooms in and out while its colours
+  cycle through the 16-colour palette. One small shader, no dots.
+* **Lunar lander:** a robot flies a lander down onto jagged ground. The
+  pads pay x2 (wide), x3 and x5 (narrow, and low in a valley); fuel left
+  over scores too. Too fast, tilted or off a pad and it crashes. Every
+  landing is a new level with new ground, a little more gravity and less
+  fuel, so a game usually ends around level 10 or 12, out of fuel. The
+  robot picks a pad, climbs over the hills in the way, and now and then
+  misjudges its height and comes in too hard. Fuel and speeds are round
+  the rim with the score.
 * **Maze chase:** an original maze game. A little round robot clears the
   dots while four spiky chasers hunt it, each in its own way (one chases,
   one heads it off, one flanks, one wanders). Power cells turn them blue
@@ -453,13 +481,21 @@ score, levels that get harder, and GAME OVER then a fresh game.
 The aliens, ships and pictures are made up for this program.
 
 **Retro screen settings:** `style` (**N**: 0 defence command, 1 noughts
-and crosses, 2 cyborg HUD, 3 motion tracker, 4 ship's terminal, 5 light
+and crosses, 2 cyborg HUD, 3 air traffic, 4 ship's terminal, 5 light
 grid, 6 closedown), `speed`, `text` (the readouts round
 the rim), `bright`. It has no number key: press `,` or `.` to reach it, or
 pick it on the web remote. Defence command draws the coastlines from the
 Earth map in `textures/` (made-up continents if there isn't one), holds the
 globe over the North Atlantic so Europe and North America face you, and runs
-a 66-second simulation from DEFCON 5 to 1 that ends with no winner. In
+a 66-second simulation from DEFCON 5 to 1 that ends with no winner. Air
+traffic makes the whole world one radar globe that turns with the ball:
+18 flights cross it on great circles between 30 real airports, a sweep
+goes round the pole painting each aircraft's plot and leaving a trail of
+older ones, and each has a data tag (made-up callsign, then flight level
+with `^` climbing or `v` descending, and ground speed in tens of knots)
+kept upright to the globe's north. Two aircraft under 1.5 degrees and
+2,000 feet apart flash red, and the rim shows the traffic, alerts and the
+time in UTC. In
 noughts and crosses both sides play perfectly, so every game is a draw; the
 score sits under the middle board, and at the end the boards dim and the
 verdict comes up in the middle. The
@@ -469,6 +505,21 @@ colour bars, a test card, the caption, static, then the picture collapses to
 a dot. Text in this scene is drawn by the shader from a font texture rather
 than as dots, which keeps it quick on the Pi. All original designs in the
 spirit of the era.
+
+**Eyes settings:** `style` (**N**: 0 brown, 1 blue, 2 green, 3 hazel, 4 cat,
+5 owl, 6 reptile, 7 fire eye), `speed` (how lively it is), `look` (how far
+it glances round; 0 stares straight at you), `blink` (0 or 1), `lids` (0 the
+bare eyeball, 1 with its lids: skin, fur, feathers, scales or rock),
+`pupil` (smaller or wider than it rests), `shine` (the wet sheen and the
+window reflected in the cornea), `bright`. For realism on a Pi 3, the
+detail is worked out once when the style changes (about a fifth of a second
+on a PC): the iris fibres, crypts and the ring round the pupil, the veins
+in the white, and the lids go into three textures, and the shader only
+looks them up and adds the light. The eye flicks to a new spot and holds
+there, blinks every few seconds (sometimes twice), and its pupil drifts
+wider and narrower. The fire eye is an original design: a round pupil in an
+iris of streaming embers, an obsidian eyeball with lava veins, dark rock
+with glowing seams for lids, heat shimmer and rising sparks.
 
 **Weather settings:** `style` (**N**: 0 live clouds, 1 infrared, 2 over
 home, 3 aurora, 4 storms), `speed` (the drift and shimmer), `home_lat` and
@@ -843,7 +894,8 @@ that animates its own uniforms in `update()`. A scene is:
 5. A `Scene` struct naming its settings file and callbacks.
 
 Then add it to the list in `main.c` and to `SRC` in the `Makefile`. Ten
-scenes fit on the number keys; up to 16 can be reached with `,` and `.`. A
+scenes fit on the number keys; up to 24 can be reached with `,` and `.`
+(`DOME_MAX_SCENES` in `dome/dome.h`). A
 different project, such as a planet projector on its own, is just a new
 `main.c` listing its own scenes. `dome/dome.h` documents every call.
 

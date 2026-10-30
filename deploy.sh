@@ -14,6 +14,8 @@ scp third_party/*.h       "$PI:$DEST/third_party/"
 scp -r tools/*            "$PI:$DEST/tools/"
 # maps, if any (2048x1024 or smaller)
 ls textures/*.jpg textures/*.png >/dev/null 2>&1 && scp textures/*.jpg textures/*.png "$PI:$DEST/textures/" 2>/dev/null || true
+# your own photos for the tape loading style, if any
+if ls tapes/* >/dev/null 2>&1; then ssh "$PI" "mkdir -p $DEST/tapes"; scp tapes/* "$PI:$DEST/tapes/"; fi
 # settings files are only copied if the Pi has none, so your saved
 # calibration on the Pi is never overwritten
 for f in calibration.cfg deathstar.cfg; do

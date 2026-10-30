@@ -29,6 +29,10 @@ scifi.cfg
 computers.cfg
 screen.cfg
 weather.cfg
+eyes.cfg
+
+# your own photos for the tape loading style
+tapes/
 
 # the web remote's playlist, made on the Pi
 playlist.json
