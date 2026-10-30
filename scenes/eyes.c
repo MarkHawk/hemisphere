@@ -522,10 +522,18 @@ static void update(const DomeFrame *f)
     /* glances: a fast flick, then a hold */
     E.hold -= dt;
     if (E.hold <= 0) pick_target(e);
-    for (int i = 0; i < 3; i++) {                               /* a quick, well-damped spring */
-        float k = 900.0f, d = 2.0f * sqrtf(k);
-        E.vel[i] += ((E.target[i] - E.g[i]) * k - E.vel[i] * d) * dt;
-        E.g[i] += E.vel[i] * dt;
+    /* a quick, well-damped spring. It is stiff, so it is stepped in small
+     * fixed slices: one big step per frame (a Pi 3 at 20 to 30 fps)
+     * overshoots further each frame and the eye flips between extremes. */
+    {
+        const float k = 900.0f, d = 2.0f * sqrtf(k), h = 1.0f / 480.0f;
+        int n = (int)ceilf(dt / h);
+        float sh = n > 0 ? dt / (float)n : 0.0f;
+        for (int j = 0; j < n; j++)
+            for (int i = 0; i < 3; i++) {
+                E.vel[i] += ((E.target[i] - E.g[i]) * k - E.vel[i] * d) * sh;
+                E.g[i] += E.vel[i] * sh;
+            }
     }
     unit(E.g);
     /* blinks */
