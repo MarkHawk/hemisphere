@@ -19,6 +19,10 @@
  *                     fading after-images
  *   7 lissajous       a turning figure, a quarter turn a beat, sized by
  *                     the bass, morphing to a new ratio every 20 s
+ *   8 wire tunnel     rings flying out of the middle on the bass, bending
+ *                     with it and bulging on the beat
+ *   9 terrain         a wireframe landscape of spectra scrolling towards
+ *                     you below a horizon
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -632,6 +636,123 @@ static void liss_points(const DomeFrame *f)
     pool_draw(f, NULL, 2.0f, 2.5f, 7.0f);
 }
 
+/* ---- 8: wire tunnel: rings flying out of the middle on the bass clock,
+ * with spokes. Rings are spaced by the log of their distance, like the
+ * starfield, so they speed up and spread as they come past; the bass
+ * bends them and the beat's swell makes them bulge. ---- */
+static void tunnel_points(const DomeFrame *f)
+{
+    const int RINGS = 14, SEG = 120, SPOKES = 12;
+    const float span = 4.6f;
+    float bend = 0.08f * f->audio.bass * g_gain * L.react, bulge = 0.10f * g_swell * L.react;
+    pool_clear();
+    for (int k = 0; k < RINGS; k++) {
+        float pos = fmodf((float)k / RINGS * span + g_flow * 0.5f, span);
+        float lp = -3.9f + pos;                              /* log of the plane radius */
+        float r = expf(lp) * (1.0f + bulge);
+        if (r > 1.08f) continue;
+        float fade = smooth01(0.02f, 0.25f, r);
+        float c[3];
+        theme_rgb((float)k / RINGS + g_t * 0.02f, c);
+        float px = 0, py = 0;
+        for (int i = 0; i <= SEG; i++) {
+            float th = (float)i / SEG * 2.0f * DOME_PI;
+            float rr = r * (1.0f + bend * sinf(4.0f * th + g_t * 1.3f + (float)k));
+            float x = rr * cosf(th), y = rr * sinf(th);
+            if (i > 0) line_plane(r < 0.3f ? SMALL : MID, px, py, x, y, c, 0.9f * fade);
+            px = x; py = y;
+        }
+    }
+    float sc[3];
+    theme_rgb(0.5f + g_t * 0.02f, sc);
+    for (int s = 0; s < SPOKES; s++) {
+        float th = ((float)s / SPOKES) * 2.0f * DOME_PI + g_t * 0.08f;
+        for (int j = 0; j < 8; j++) {                         /* fading towards the middle */
+            float r0 = 0.04f + 0.12f * j, r1 = r0 + 0.12f;
+            line_plane(SMALL, r0 * cosf(th), r0 * sinf(th), r1 * cosf(th), r1 * sinf(th),
+                       sc, 0.15f + 0.07f * j);
+        }
+    }
+    pool_draw(f, NULL, 2.0f, 3.0f, 5.0f);
+}
+
+/* ---- 9: spectrum terrain: a wireframe landscape below a horizon across
+ * the middle. Each row is a spectrum taken as it played, bass in the
+ * middle and mirrored out; the rows scroll towards you. ---- */
+#define TER_ROWS 24
+#define TER_COLS 31                  /* bands mirrored: 15..0..15 */
+static float g_ter[TER_ROWS][AUDIO_BANDS];   /* newest first */
+static float g_ter_acc;
+
+static void terrain_update(const DomeFrame *f)
+{
+    float step = 0.12f / L.speed;
+    g_ter_acc += f->dt;
+    while (g_ter_acc >= step) {
+        g_ter_acc -= step;
+        memmove(g_ter[1], g_ter[0], (TER_ROWS - 1) * sizeof g_ter[0]);
+        for (int i = 0; i < AUDIO_BANDS; i++) {
+            /* idle: low rolling hills */
+            float hill = 0.25f + 0.2f * sinf((float)i * 0.7f + g_t * 0.9f);
+            g_ter[0][i] = fmaxf(band_lift(f, i), hill * (1.0f - g_live));
+        }
+    }
+}
+
+/* a ground point in front of you (x across, z ahead, h up) as a direction */
+static void ground_dir(float x, float z, float h, float out[3])
+{
+    float y = -2.0f + h * 1.6f;          /* the eye is 2 above the ground, above every peak */
+    float l = sqrtf(x * x + y * y + z * z);
+    out[0] = x / l; out[1] = y / l; out[2] = z / l;
+}
+
+static void terrain_points(const DomeFrame *f)
+{
+    const float ZFAR = 26.0f, ZNEAR = 0.5f;
+    float frac = g_ter_acc / (0.12f / L.speed);       /* rows glide between steps */
+    float pts[TER_ROWS][TER_COLS][3], hgt[TER_ROWS][TER_COLS], al[TER_ROWS];
+    for (int r = 0; r < TER_ROWS; r++) {
+        float t = ((float)r + frac) / (TER_ROWS - 1);    /* 0 newest (far) .. 1 near */
+        float z = ZFAR * powf(ZNEAR / ZFAR, t);
+        al[r] = smooth01(0.0f, 0.25f, t) * (1.0f - smooth01(0.96f, 1.0f, t));
+        for (int c = 0; c < TER_COLS; c++) {
+            int band = abs(c - TER_COLS / 2);
+            float h = g_ter[r][band];
+            hgt[r][c] = h;
+            ground_dir((float)(c - TER_COLS / 2) * 1.0f, z, h, pts[r][c]);
+        }
+    }
+    pool_clear();
+    for (int r = 0; r < TER_ROWS; r++)
+        for (int c = 0; c < TER_COLS; c++) {
+            float col[3];
+            theme_rgb(0.1f + hgt[r][c] * 0.45f + g_t * 0.01f, col);
+            if (al[r] < 0.02f) continue;
+            if (c + 1 < TER_COLS)
+                dome_points_line(&g_pool[SMALL], pts[r][c], pts[r][c + 1], col[0], col[1], col[2], al[r], 0.007f);
+            if (r + 1 < TER_ROWS && al[r + 1] > 0.02f)
+                dome_points_line(&g_pool[SMALL], pts[r][c], pts[r + 1][c], col[0], col[1], col[2],
+                                 0.6f * fminf(al[r], al[r + 1]), 0.007f);
+        }
+    pool_draw(f, NULL, 2.5f, 3.0f, 5.0f);
+}
+
+/* a dim horizon glow behind the terrain */
+static const char HORIZON[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float h = exp(-abs(view.y) * 9.0) * step(0.0, view.z);\n"
+    "  return vec4(u_c0 * h * (0.10 + 0.08 * u_level * u_react) * u_bright, 1.0);\n"
+    "}\n";
+
+static void horizon_uniforms(GLuint p, const DomeFrame *f)
+{
+    (void)f;
+    float c[3];
+    theme_rgb(0.3f + g_t * 0.01f, c);
+    set3(p, "u_c0", c);
+}
+
 /* ================================================================== */
 /* The table: one row per style, in N order                            */
 /* ================================================================== */
@@ -652,6 +773,8 @@ static const Style STYLES[] = {
     { "radial bars",   GLOW,    NULL,           glow_uniforms,    radial_points },
     { "oscilloscope",  GLOW,    scope_update,   glow_uniforms,    scope_points },
     { "lissajous",     GLOW,    NULL,           glow_uniforms,    liss_points },
+    { "wire tunnel",   GLOW,    NULL,           glow_uniforms,    tunnel_points },
+    { "terrain",       HORIZON, terrain_update, horizon_uniforms, terrain_points },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
@@ -660,7 +783,7 @@ static GLuint g_prog[NSTYLE];
 static Param P[] = {
     { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0,
       "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora, 5 radial bars, "
-      "6 oscilloscope, 7 lissajous (N)" },
+      "6 oscilloscope, 7 lissajous, 8 wire tunnel, 9 terrain (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
