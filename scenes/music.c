@@ -37,6 +37,9 @@
  *  16 bass plasma     a flowing colour field, faster with the bass
  *  17 kaleidoscope    six mirrored folds turning slowly, the zoom
  *                     breathing on the beat
+ *  18 colour tunnel   flying down a tunnel of colour on the bass
+ *  19 liquid light    five soft blobs of coloured oil, mixing where they
+ *                     meet, moving with the snare body
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -1134,6 +1137,69 @@ static void kaleido_uniforms(GLuint p, const DomeFrame *f)
     set3(p, "u_c1", d);
 }
 
+/* ---- 18: colour tunnel: the classic angle and 1/r lookup through the
+ * noise, flying on the bass clock, twisting with the snare body (u_k0).
+ * The middle is the far end, so it is darkest. ---- */
+static const char TUNNEL[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  vec2 p = plane(view);\n"
+    "  float r = max(length(p), 0.015);\n"
+    "  float a = fatan2(p.y, p.x) / 6.2831853;\n"           /* -0.5 .. 0.5 */
+    "  float v = 0.3 / r + u_flow * 0.9;\n"
+    "  float n = noise(vec2(a * 2.0 + v * u_k0, v * 0.25));\n"   /* tiles round, so no seam */
+    "  float rings = 0.6 + 0.4 * sin(v * 6.2831853 + n * 4.0);\n"
+    "  vec3 c = theme(u_theme, n * 0.9 + v * 0.12);\n"
+    "  float depth = smoothstep(0.06, 0.4, r);\n"
+    "  return vec4(c * (0.55 + 0.45 * n) * rings * depth * u_bright, 1.0);\n"
+    "}\n";
+
+static float g_twist;
+
+static void tunnel_uniforms(GLuint p, const DomeFrame *f)
+{
+    g_twist = ease_to(g_twist, 0.02f + 0.06f * f->audio.body * g_gain * L.react, 0.5f, f->dt);
+    set1(p, "u_k0", g_twist);
+}
+
+/* ---- 19: liquid light: five soft blobs of coloured oil, their colours
+ * mixing where they meet, like a 60s light show. Their paths stretch and
+ * quicken with the snare body; they swell with the bass (u_k0 is how
+ * tight they are). Written out, no loop. ---- */
+static const char LIQUID[] =
+    "uniform vec2 u_bp[5];\n"
+    "uniform vec3 u_bc[5];\n"
+    "#define BLOB(i) { vec2 d = p - u_bp[i]; float e = 1.0 / (1.0 + dot(d, d) * u_k0); e *= e; \\\n"
+    "                  col += u_bc[i] * e; w += e; }\n"
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  vec2 p = plane(view);\n"
+    "  vec3 col = vec3(0.0);\n"
+    "  float w = 0.0;\n"
+    "  BLOB(0) BLOB(1) BLOB(2) BLOB(3) BLOB(4)\n"
+    "  col = col / max(w, 1e-3) * smoothstep(0.12, 0.8, w);\n"
+    "  col += col * exp(-abs(w - 0.45) * 10.0) * 0.35;\n"     /* a bright skin at the edges */
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+static float g_liq;
+
+static void liquid_uniforms(GLuint p, const DomeFrame *f)
+{
+    const Audio *a = &f->audio;
+    float body = a->body * g_gain * L.react;
+    g_liq += f->dt * L.speed * (0.25f + 0.6f * body);
+    float stretch = 0.75f + 0.35f * fminf(body, 1.0f);
+    float pos[10], col[15];
+    for (int i = 0; i < 5; i++) {
+        float w1 = 0.31f + 0.07f * i, w2 = 0.23f + 0.05f * i, ph = 1.7f * i;
+        pos[2 * i]     = stretch * 0.55f * sinf(g_liq * w1 * 2.0f + ph);
+        pos[2 * i + 1] = stretch * 0.48f * sinf(g_liq * w2 * 2.0f + ph * 1.3f + 0.6f);
+        theme_rgb((float)i / 5.0f * 0.8f + g_t * 0.01f, col + 3 * i);
+    }
+    glUniform2fv(glGetUniformLocation(p, "u_bp[0]"), 5, pos);
+    glUniform3fv(glGetUniformLocation(p, "u_bc[0]"), 5, col);
+    set1(p, "u_k0", 13.0f - 5.0f * fminf(1.0f, a->bass * g_gain * L.react));
+}
+
 /* ================================================================== */
 /* The table: one row per style, in N order                            */
 /* ================================================================== */
@@ -1164,6 +1230,8 @@ static const Style STYLES[] = {
     { "8-bit spectrum", CHUNKY, chunky_update,  chunky_uniforms,  NULL },
     { "bass plasma",   PLASMA,  NULL,           plasma_uniforms,  NULL },
     { "kaleidoscope",  KALEIDO, NULL,           kaleido_uniforms, NULL },
+    { "colour tunnel", TUNNEL,  NULL,           tunnel_uniforms,  NULL },
+    { "liquid light",  LIQUID,  NULL,           liquid_uniforms,  NULL },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
@@ -1174,7 +1242,7 @@ static Param P[] = {
       "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora, 5 radial bars, "
       "6 oscilloscope, 7 lissajous, 8 wire tunnel, 9 terrain, 10 bursts, 11 dot globe, "
       "12 galaxy, 13 rain, 14 fireworks, 15 8-bit spectrum, 16 bass plasma, "
-      "17 kaleidoscope (N)" },
+      "17 kaleidoscope, 18 colour tunnel, 19 liquid light (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
