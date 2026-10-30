@@ -30,8 +30,7 @@ static const char *POINT_VS =
     "float lens(float phi){ return atan(sin(phi), cos(phi) + u_offset); }\n"
     /* Optional warp (dome_points_warp), compiled into a second program
      * with DOME_WARP defined, so the plain program is exactly as before.
-     * Each dot's direction is nudged by a small angle; its depth is kept,
-     * so recessed dots and the aperture still work. */
+     * Each dot's direction on the globe is nudged by a small angle. */
     "#ifdef DOME_WARP\n"
     "uniform float u_w_swell;\n"     /* spread from the dome centre       */
     "uniform vec3  u_w_org;\n"       /* model space: where ripples start  */
@@ -70,11 +69,7 @@ static const char *POINT_VS =
     "}\n"
     "#endif\n"
     "void main(){\n"
-    "#ifdef DOME_WARP\n"
-    "  vec3  p     = warp_dome(u_rot * warp_model(a_pos));\n"
-    "#else\n"
     "  vec3  p     = u_rot * a_pos;\n"
-    "#endif\n"
     "  float depth = length(p);\n"
     "  vec3  q     = p / depth;\n"
     "  float phi_s = acos(clamp(q.z, -1.0, 1.0));\n"
@@ -88,6 +83,12 @@ static const char *POINT_VS =
     "    if (disc > 0.0) q = normalize(E + (-b - sqrt(disc)) * d);\n"
     "    if (dot(q, normalize(u_rot * u_ap_dir)) < u_ap_cos - 0.002) hidden = 1.0;\n"
     "  }\n"
+    /* warp: bend where the dot shows, after the recess and aperture test
+     * above, so the same dots show as unbent (q * u_rot is back in model
+     * space: u_rot is a rotation, so its transpose is its inverse) */
+    "#ifdef DOME_WARP\n"
+    "  q = warp_dome(u_rot * warp_model(q * u_rot));\n"
+    "#endif\n"
     "  float phi   = acos(clamp(q.z, -1.0, 1.0));\n"
     /* zoomed out: the globe seen from far away, a small ball at the dome
      * centre. Only its near side shows; near the rim of the ball the
