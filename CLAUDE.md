@@ -7,9 +7,9 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
 
 ## Layout
 
-- `main.c`: entry point, scene switching. The 17 scenes, in `main.c` order:
+- `main.c`: entry point, scene switching. The 18 scenes, in `main.c` order:
   deathstar, planet, plasma, julia, kaleido, life, moon, orbit, groovy, scifi,
-  computers, hypno, balls, retro, screen (Retro screen), weather, eyes. The first ten are on number keys 1 to
+  computers, hypno, balls, retro, screen (Retro screen), weather, eyes, music. The first ten are on number keys 1 to
   9 and 0; the rest are on `,` and `.` and the web remote. The framework
   allows up to 24 scenes (`DOME_MAX_SCENES` in `dome/dome.h`). Aim for 8 good styles per scene; the plan and the
   quality bar are in the "Hemisphere scene plan" doc. For speed on the Pi,

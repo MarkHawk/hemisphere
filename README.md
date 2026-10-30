@@ -58,6 +58,7 @@ rest are on `,` and `.` and the web remote.
 | , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
 | , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
 | , and . | Eyes | One big eye filling the dome, looking round the room, blinking, its pupil opening and closing: brown, blue, green and hazel human eyes, a cat, an owl, a reptile, and an original fire eye of glowing embers in an obsidian eyeball |
+| , and . | Music | Built for sound from your WLED lights (see "Sound from WLED"): a spectrum ring round the rim and a pulse globe that swells with the bass and the beat. With no music each style idles calmly |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -259,6 +260,7 @@ Settings are kept in files next to the program, in groups:
 | `screen.cfg` | Retro screen | Retro screen (, and .) | Style, speed, text |
 | `eyes.cfg` | Eyes | Eyes (, and .) | Style, speed, how far it looks, blinks, lids, pupil size, shine |
 | `weather.cfg` | Weather | Weather (, and .) | Style, home, zoom, clouds, coasts, storm speed |
+| `music.cfg` | Music | Music (, and .) | Style, sound on or off, how strongly it reacts, speed, colours |
 
 In a scene, TAB steps through the six view settings first (`pitch`,
 `tilt`, `wobble`, `rev_secs`, `res`, `view_dist`) and then that scene's
@@ -873,8 +875,8 @@ don't have this problem.
 | P / H | Print all settings / the key list |
 | SPACE | Pause rotation |
 | UP / DOWN | Faster / slower rotation |
-| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro, Retro screen, Weather), map (planet) or view (orbit watch). Death Star: thinner lines |
-| M | Hypnotic: next colours. Computers: phosphor colour. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: thicker lines |
+| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro, Retro screen, Weather, Music), map (planet) or view (orbit watch). Death Star: thinner lines |
+| M | Hypnotic, Music: next colours. Computers: phosphor colour. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: thicker lines |
 | C | Life: reseed. Death Star: cycle phosphor colour |
 | I / K | Death Star: dish shallower / deeper |
 | Z | Death Star: replay the intro zoom |
