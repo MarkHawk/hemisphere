@@ -1,6 +1,6 @@
 /*
- * main.c  -  Hemisphere: the 16 scenes this program offers (the most the
- * framework allows), on keys 1 to 9 and 0;
+ * main.c  -  Hemisphere: the 17 scenes this program offers (the framework
+ * allows up to DOME_MAX_SCENES), on keys 1 to 9 and 0;
  * , and . step through them all (Computers onwards, from the eleventh, are
  * only on those).
  * A new project is a new main.c listing its own scenes.
@@ -10,7 +10,7 @@
 extern Scene scene_deathstar, scene_planet, scene_plasma, scene_julia,
              scene_kaleido, scene_life, scene_moon, scene_orbit, scene_groovy, scene_scifi,
              scene_computers, scene_hypno, scene_balls, scene_retro,
-             scene_screen, scene_weather;
+             scene_screen, scene_weather, scene_eyes;
 
 int main(int argc, char **argv)
 {
@@ -19,7 +19,7 @@ int main(int argc, char **argv)
                               &scene_moon, &scene_orbit, &scene_groovy,
                               &scene_scifi, &scene_computers,
                               &scene_hypno, &scene_balls, &scene_retro,
-                              &scene_screen, &scene_weather };
+                              &scene_screen, &scene_weather, &scene_eyes };
     return dome_run(argc, argv, "Hemisphere", scenes,
                     (int)(sizeof scenes / sizeof scenes[0]));
 }

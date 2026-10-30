@@ -182,9 +182,9 @@ static Param g_view_params[] = {
 /* ---- groups: 0 = calibration, 1 + i = view + scene i ---- */
 static Scene *const *g_scenes;
 static int     g_nscenes;
-static Param **g_group[17];        /* list of Param pointers per group */
-static float  *g_group_def[17];    /* default values, same order       */
-static int     g_group_n[17];
+static Param **g_group[DOME_MAX_SCENES + 1];        /* list of Param pointers per group */
+static float  *g_group_def[DOME_MAX_SCENES + 1];    /* default values, same order       */
+static int     g_group_n[DOME_MAX_SCENES + 1];
 static int     g_ngroups;
 
 static void group_build(int g, Param *a, int na, Param *b, int nb)
@@ -1181,7 +1181,7 @@ int dome_run(int argc, char **argv, const char *title,
              Scene *const *scenes, int nscenes)
 {
     (void)argc;
-    if (nscenes > 16) nscenes = 16;
+    if (nscenes > DOME_MAX_SCENES) nscenes = DOME_MAX_SCENES;
     g_scenes = scenes; g_nscenes = nscenes;
 
 #ifdef _WIN32
@@ -1292,7 +1292,7 @@ int dome_run(int argc, char **argv, const char *title,
     int running = 1, paused = 0, mode = 0, grid_spin = 0, overlay = 0;
     Uint32 disp_check_ms = 0;
     int disp_warned = -1;
-    int sel[17] = { 0 };
+    int sel[DOME_MAX_SCENES + 1] = { 0 };
     float spin = 0;
     Uint32 start_ms = SDL_GetTicks();
     float last_t = 0;

@@ -191,8 +191,11 @@ typedef struct {
                                  if cfg is missing (NULL = none)          */
 } Scene;
 
+/* the most scenes one program can list */
+#define DOME_MAX_SCENES 24
+
 /* run the program. Scenes are on keys 1 to 9 then 0 (up to 10); , and .
- * step through all of them (up to 16). Returns the exit code. */
+ * step through all of them (up to DOME_MAX_SCENES). Returns the exit code. */
 int dome_run(int argc, char **argv, const char *title,
              Scene *const *scenes, int nscenes);
 
