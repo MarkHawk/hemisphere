@@ -3,19 +3,23 @@
  *
  *   0 digital rain    green character columns pouring down
  *   1 copper bars     rolling colour bars with a sine-wave text scroller
- *   2 starfield       pixel stars flying out towards you
- *   3 pixel planet    an 8-bit world turning, with pixel clouds
+ *   2 rotozoomer      a made-up pixel tile turning and zooming, colours cycling
+ *   3 lunar lander    a robot flies a lander down to the pads over jagged
+ *                     ground: fuel, bonus pads, crashes, levels
  *   4 maze chase      a robot clears a maze of dots, chased by four spiky
  *                     chasers; it stays in the middle and the maze slides round it
  *   5 rim defender    a ship circling the rim, aliens spiralling out and firing back
  *   6 asteroids       asteroids on a globe: the whole sphere is the playfield
  *   7 16-colour plasma  the demo-scene favourite in a fixed palette
- *   8 tape loading    striped border while a picture loads line by line
+ *   8 tape loading    a home-computer screen loading off tape: pilot tone and
+ *                     data stripes in the border, the picture arriving in thirds,
+ *                     the colours last, with real attribute clash. A different
+ *                     picture each time: built-in people and places, or your
+ *                     own photos from the tapes folder
  *   9 pixel fire      the classic demo fire effect
  *
- * All of them face you except the pixel planet, which turns with the
- * ball, and asteroids, which follows the ship round the globe. The three
- * games are full games (levels, lives, score, high score), each played by
+ * All of them face you except asteroids, which follows the ship round the
+ * globe. The four games are full games (levels, lives, score, high score), each played by
  * a small robot. scale sets the size of the pixels. The aliens and every picture
  * here are made up for this program; none is copied from a real game.
  */
@@ -24,10 +28,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include "../third_party/stb_image.h"    /* the code itself is in planet.c */
+#include "../dome/font5x7.h"
 
 #define NSTYLE 10
 static const char *NAMES[NSTYLE] = {
-    "digital rain", "copper bars", "starfield", "pixel planet", "maze chase",
+    "digital rain", "copper bars", "rotozoomer", "lunar lander", "maze chase",
     "rim defender", "asteroids", "16-colour plasma", "tape loading", "pixel fire"
 };
 
@@ -35,7 +42,7 @@ static struct { float style, speed, scale, bright, grid; } L = { 0.0f, 1.0f, 1.0
 
 static Param P[] = {
     { "style",  &L.style,  1.0f, 0.0f, 9.0f, 0,
-      "0 digital rain, 1 copper bars, 2 starfield, 3 pixel planet, 4 maze chase, 5 rim defender, "
+      "0 digital rain, 1 copper bars, 2 rotozoomer, 3 lunar lander, 4 maze chase, 5 rim defender, "
       "6 asteroids, 7 plasma, 8 tape loading, 9 pixel fire (N)" },
     { "speed",  &L.speed,  0.1f, 0.0f, 4.0f, 0, "speed of the animation" },
     { "scale",  &L.scale,  0.05f, 0.4f, 2.5f, 0, "pixel size (bigger = smaller pixels)" },
@@ -110,51 +117,103 @@ static const char COPPER[] =
     "  return vec4(c * gaps(plane(view)) * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 2: starfield ---- */
-static const char STARS[] =
+/* ---- 2: rotozoomer: a made-up pixel tile, turning and zooming, with
+ * its colours cycling through the 16-colour palette ---- */
+static const char ROTO[] =
+    "float tile(vec2 t){\n"                                         /* one 16x16 tile, made up */
+    "  vec2 c = floor(fract(t) * 16.0) - 7.5;\n"
+    "  float d = abs(c.x) + abs(c.y);\n"                            /* a diamond gem */
+    "  float r = max(abs(c.x), abs(c.y));\n"                        /* and a square frame */
+    "  float chk = mod(floor(t.x) + floor(t.y), 2.0);\n"
+    "  if (r > 6.9) return 1.0;\n"                                  /* the frame */
+    "  if (d < 2.1) return 8.0;\n"                                  /* the gem's sparkle */
+    "  if (d < 6.1) return 10.0 + floor(d) + chk * 3.0;\n"
+    "  return 2.0 + chk * 11.0 + step(4.5, r);\n"
+    "}\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
-    "  vec2 p = plane(view), pp = pix(p);\n"
-    "  float n = NP();\n"
-    "  vec3 c = vec3(0.0);\n"
-    "  for (int k = 0; k < 4; k++) {\n"
-    "    float z = fract(u_t * 0.12 + float(k) * 0.25);\n"
-    "    float s = mix(16.0, 0.9, z);\n"                            /* layers zoom out towards you */
-    "    vec2 q = pp * s;\n"
-    "    vec2 cell = floor(q);\n"
-    "    float h = h3(vec3(cell, float(k) + floor(u_t * 0.12 + float(k) * 0.25) * 4.0));\n"
-    "    if (h > 0.55) {\n"
-    "      vec2 st = (cell + 0.5 + (vec2(h, fract(h * 7.3)) - 0.5) * 0.7) / s;\n"
-    "      vec2 sp = (floor(st * n) + 0.5) / n;\n"
-    "      float big = z > 0.8 ? 1.5 : 0.5;\n"
-    "      if (max(abs(sp.x - pp.x), abs(sp.y - pp.y)) * n < big)\n"
-    "        c = max(c, mix(vec3(0.3, 0.4, 0.9), vec3(1.0), z) * z * 1.4);\n"
-    "    }\n"
-    "  }\n"
+    "  vec2 p = plane(view), q = pix(p);\n"
+    "  float a = u_t * 0.35 + 0.8 * sin(u_t * 0.13);\n"
+    "  float z = 1.6 + 1.25 * sin(u_t * 0.41);\n"                   /* zoom in and out */
+    "  mat2 R = mat2(cos(a), sin(a), -sin(a), cos(a));\n"
+    "  vec2 t = R * q * z + vec2(u_t * 0.37, u_t * 0.21);\n"
+    "  float k = tile(t);\n"
+    "  float i = k < 1.5 ? 0.0 : k > 7.5 && k < 8.5 ? 8.0 : mod(k + floor(u_t * 6.0), 15.0) + 1.0;\n"
+    "  vec3 c = pal16(i);\n"
+    "  c *= 0.75 + 0.25 * step(0.5, fract(t.y * 16.0 / 2.0));\n"   /* every other pixel row darker */
     "  return vec4(c * gaps(p) * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 3: pixel planet (turns with the ball) ---- */
-static const char PLANET[] =
+/* ---- 3: lunar lander. Terrain heights in u_ter (R height, G landing pad
+ * bonus / 10, B the nearest pad's middle, A 1 - its bonus / 10 where its
+ * label goes), u_ship = x, y, angle, flame;
+ * u_g.x = 1 while the wreck burns, u_g.y = 1 on a landing (lights) ---- */
+static const char LANDER[] =
+    "uniform sampler2D u_ter;\n"
+    "uniform vec4 u_ship;\n"
+    "float dig(float n, vec2 c){\n"                                 /* 3x5 digits 2-5 and an x */
+    "  if (c.x < 0.0 || c.y < 0.0 || c.x > 2.5 || c.y > 4.5) return 0.0;\n"
+    "  vec2 f = floor(c);\n"
+    "  float rows[5];\n"
+    "  if (n < 1.5) { rows[0]=0.0; rows[1]=5.0; rows[2]=2.0; rows[3]=5.0; rows[4]=0.0; }\n"     /* x */
+    "  else if (n < 2.5) { rows[0]=7.0; rows[1]=1.0; rows[2]=7.0; rows[3]=4.0; rows[4]=7.0; }\n"
+    "  else if (n < 3.5) { rows[0]=7.0; rows[1]=1.0; rows[2]=3.0; rows[3]=1.0; rows[4]=7.0; }\n"
+    "  else if (n < 4.5) { rows[0]=5.0; rows[1]=5.0; rows[2]=7.0; rows[3]=1.0; rows[4]=1.0; }\n"
+    "  else { rows[0]=7.0; rows[1]=4.0; rows[2]=7.0; rows[3]=1.0; rows[4]=7.0; }\n"
+    "  float r = f.y < 0.5 ? rows[0] : f.y < 1.5 ? rows[1] : f.y < 2.5 ? rows[2] : f.y < 3.5 ? rows[3] : rows[4];\n"
+    "  return mod(floor(r / pow(2.0, 2.0 - f.x)), 2.0);\n"
+    "}\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
-    "  float rows = floor(36.0 * u_scale + 0.5);\n"
-    "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
-    "  vec2 g = vec2((lon / (2.0 * PI) + 0.5) * rows * 2.0, (lat / PI + 0.5) * rows);\n"
-    "  vec2 cq = (floor(g) + 0.5) / vec2(rows * 2.0, rows);\n"
-    "  float la = (cq.y - 0.5) * PI, lo = (cq.x - 0.5) * 2.0 * PI;\n"
-    "  vec3 d = vec3(cos(la) * sin(lo), sin(la), cos(la) * cos(lo));\n"
-    "  vec3 q = d * 2.3;\n"
-    "  float h = sin(q.x * 1.9 + sin(q.y * 2.3)) + sin(q.z * 2.2 + sin(q.x * 1.7 + 1.0)) + 0.5 * sin(q.y * 4.1 + q.z * 3.3);\n"
-    "  vec3 c = h < -0.2 ? vec3(0.10, 0.20, 0.60) : h < 0.25 ? vec3(0.15, 0.40, 0.85)\n"
-    "         : h < 0.40 ? vec3(0.90, 0.80, 0.45) : h < 1.0 ? vec3(0.25, 0.70, 0.25)\n"
-    "         : h < 1.5 ? vec3(0.10, 0.45, 0.15) : vec3(0.55, 0.45, 0.35);\n"
-    "  if (abs(la) > 1.25) c = vec3(0.95);\n"                       /* ice caps */
-    "  float cl = sin(lo * 5.0 + u_t * 0.3 + sin(la * 7.0)) + sin(lo * 3.0 - la * 9.0 - u_t * 0.2);\n"
-    "  if (cl > 1.3) c = vec3(1.0);\n"
-    "  float lt = dot(view, normalize(vec3(-0.5, 0.4, 0.75)));\n"
-    "  c *= lt > 0.35 ? 1.0 : lt > 0.0 ? 0.65 : 0.3;\n"           /* three steps of shading */
-    "  vec2 f = fract(g);\n"
-    "  c *= mix(1.0, 0.75 + 0.25 * step(0.12, min(f.x, f.y)), u_grid);\n"
-    "  return vec4(c * u_bright, 1.0);\n"
+    "  vec2 p = plane(view), q = pix(p);\n"
+    "  float n = NP();\n"
+    "  vec2 g = floor(p * n);\n"
+    /* the sky: stars and a small blue planet */
+    "  vec3 c = vec3(0.0);\n"
+    "  if (h3(vec3(g, 5.0)) > 0.985) c = vec3(0.55, 0.55, 0.7) + 0.3 * step(0.5, fract(u_t * 0.7 + h3(vec3(g, 6.0))));\n"
+    "  vec2 ep = q - vec2(-0.32, 0.42);\n"
+    "  if (length(ep) < 0.11) {\n"
+    "    float land = step(0.3, sin(ep.x * 40.0 + 1.0) + sin(ep.y * 33.0 - ep.x * 20.0));\n"
+    "    c = mix(vec3(0.15, 0.35, 0.9), vec3(0.25, 0.75, 0.3), land);\n"
+    "    if (ep.x + ep.y * 0.4 > 0.04) c *= 0.35;\n"                 /* the planet's night side */
+    "  }\n"
+    /* the ground */
+    "  vec4 tr = texture2D(u_ter, vec2(clamp(q.x * 0.5 + 0.5, 0.0, 1.0), 0.5));\n"
+    "  float h = mix(-0.98, 0.05, tr.r);\n"
+    "  float hp = (floor(h * n) + 0.5) / n;\n"
+    "  if (q.y <= hp) {\n"
+    "    float depth = (hp - q.y) * n;\n"
+    "    float cr = h3(vec3(floor(g / 3.0), 9.0));\n"
+    "    c = depth < 1.0 ? vec3(0.85, 0.85, 0.8) : mix(vec3(0.42, 0.40, 0.42), vec3(0.28, 0.26, 0.30), step(0.6, cr));\n"
+    "    if (depth > 1.0 && h3(vec3(g, 3.0)) > 0.93) c = vec3(0.55, 0.53, 0.55);\n"
+    "    if (tr.g > 0.05) {\n"                                         /* a landing pad, and its bonus */
+    "      if (depth < 1.0) c = mod(g.x + floor(u_t * 4.0), 2.0) < 1.0 || u_g.y > 0.5 ? vec3(1.0, 0.95, 0.3) : vec3(0.95, 0.4, 0.1);\n"
+    "    }\n"
+    "    if (tr.a < 0.99 && depth > 1.0) {\n"                         /* the pad's bonus, written below it */
+    "      float mid = floor((tr.b * 2.0 - 1.0) * n);\n"
+    "      float ph = mix(-0.98, 0.05, texture2D(u_ter, vec2(tr.b, 0.5)).r);\n"
+    "      vec2 lc = vec2(g.x - (mid - 3.0), floor(ph * n) - 2.0 - g.y);\n"
+    "      float lit = dig(1.0, lc) + dig(floor((1.0 - tr.a) * 10.0 + 0.5), lc - vec2(4.0, 0.0));\n"
+    "      if (lit > 0.5) c = vec3(1.0);\n"
+    "    }\n"
+    "  }\n"
+    /* the lander, a chunky sprite turned to its angle */
+    "  vec2 d = q - u_ship.xy;\n"
+    "  float ca = cos(u_ship.z), sa = sin(u_ship.z);\n"
+    "  vec2 l = vec2(ca * d.x + sa * d.y, -sa * d.x + ca * d.y) / 0.055;\n"
+    "  if (u_g.x < 0.5 && dot(l, l) < 4.0) {\n"
+    "    vec3 sc = vec3(0.0); float on = 0.0;\n"
+    "    if (length(l - vec2(0.0, 0.42)) < 0.42) { on = 1.0; sc = vec3(0.85, 0.85, 0.9); }\n"           /* the cabin */
+    "    if (length(l - vec2(0.12, 0.5)) < 0.15) sc = vec3(0.2, 0.6, 1.0);\n"                           /* its window */
+    "    if (abs(l.x) < 0.55 && l.y > -0.25 && l.y < 0.05) { on = 1.0; sc = vec3(0.95, 0.75, 0.15); }\n" /* the stage */
+    "    float leg = abs(abs(l.x) - 0.45 - (-0.2 - l.y) * 0.45);\n"
+    "    if (l.y < -0.15 && l.y > -0.72 && leg < 0.1) { on = 1.0; sc = vec3(0.7, 0.7, 0.75); }\n"       /* legs */
+    "    if (l.y < -0.66 && l.y > -0.8 && abs(abs(l.x) - 0.7) < 0.16) { on = 1.0; sc = vec3(0.7, 0.7, 0.75); }\n"
+    "    float fl = u_ship.w * (0.9 + 0.3 * h3(vec3(floor(u_t * 20.0), 1.0, 1.0)));\n"
+    "    if (fl > 0.05 && l.y < -0.25 && l.y > -0.25 - 1.3 * fl && abs(l.x) < 0.22 * (1.0 + (l.y + 0.25) / (1.3 * fl))) {\n"
+    "      on = 1.0; sc = (-0.25 - l.y) / (1.3 * fl) < 0.45 ? vec3(1.0, 1.0, 0.6) : vec3(1.0, 0.45, 0.1);\n"
+    "    }\n"
+    "    if (on > 0.5) c = sc;\n"
+    "  }\n"
+    "  return vec4(c * gaps(p) * u_bright, 1.0);\n"
     "}\n";
 
 /* ---- 4: maze chase. The robot is always in the middle; u_hero = robot
@@ -300,30 +359,30 @@ static const char PLASMA16[] =
     "  return vec4(c * gaps(p) * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 8: tape loading ---- */
+/* ---- 8: tape loading. The screen is drawn on the CPU (see "the tape
+ * loader" below) into u_scr; the border stripes are drawn here.
+ * u_tb.x = 0 plain border, 1 pilot tone, 2 data; u_tb.y = stripe phase;
+ * u_bc = the plain border colour ---- */
 static const char TAPE[] =
-    "vec3 picture(vec2 q){\n"                                       /* a made-up pixel sunset */
-    "  vec3 c = q.y > 0.1 ? pal16(13.0) : q.y > -0.05 ? pal16(5.0) : pal16(4.0);\n"
-    "  if (length(q - vec2(0.12, 0.06)) < 0.12) c = pal16(7.0);\n"
-    "  if (q.y < -0.12 + 0.06 * sin(q.x * 14.0) + 0.04 * sin(q.x * 31.0)) c = pal16(3.0);\n"
-    "  if (q.y < -0.24) c = pal16(1.0) * (0.8 + 0.2 * step(0.5, fract(q.y * 40.0 + u_t)));\n"
-    "  return c;\n"
-    "}\n"
+    "uniform sampler2D u_scr;\n"
+    "uniform vec4 u_tb;\n"
+    "uniform vec3 u_bc;\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
-    "  vec2 p = plane(view), pp = pix(p);\n"
-    "  float n = NP();\n"
-    "  float cyc = fract(u_t / 14.0);\n"
+    "  vec2 p = plane(view);\n"
+    "  vec2 q = p / vec2(0.56, 0.42);\n"                            /* 4:3, like the TV */
     "  vec3 c;\n"
-    "  if (abs(pp.x) < 0.48 && abs(pp.y) < 0.36) {\n"
-    "    float shown = 0.36 - (cyc - 0.15) / 0.75 * 0.72;\n"        /* rows arrive from the top */
-    "    c = pp.y > shown ? picture(pp) : vec3(0.85);\n"
+    "  if (abs(q.x) < 1.0 && abs(q.y) < 1.0) {\n"
+    "    c = texture2D(u_scr, vec2(q.x * 0.5 + 0.5, 0.5 - q.y * 0.5)).rgb;\n"
     "  } else {\n"
-    "    float row = floor(pp.y * n);\n"
-    "    if (cyc < 0.15) c = mod(floor(row / 4.0 + u_t * 30.0), 2.0) < 1.0 ? vec3(0.9, 0.15, 0.15) : vec3(0.15, 0.85, 0.85);\n"
-    "    else if (cyc < 0.9) c = h3(vec3(row, floor(u_t * 50.0), 3.0)) < 0.5 ? vec3(0.95, 0.9, 0.2) : vec3(0.2, 0.25, 0.9);\n"
-    "    else c = vec3(0.85);\n"
+    "    float ln = floor((1.0 - p.y) * 156.0);\n"                 /* TV lines down the dome */
+    "    if (u_tb.x > 1.5) {\n"
+    "      float band = floor((ln + u_tb.y * 37.0) / 2.0);\n"
+    "      c = h3(vec3(band, floor(u_tb.y * 7.0), 3.0)) < 0.5 ? vec3(0.0, 0.0, 0.84) : vec3(0.84, 0.84, 0.0);\n"
+    "    } else if (u_tb.x > 0.5) {\n"
+    "      c = mod(floor((ln + u_tb.y) / 11.0), 2.0) < 1.0 ? vec3(0.84, 0.0, 0.0) : vec3(0.0, 0.84, 0.84);\n"
+    "    } else c = u_bc;\n"
     "  }\n"
-    "  return vec4(c * gaps(p) * u_bright, 1.0);\n"
+    "  return vec4(c * u_bright, 1.0);\n"
     "}\n";
 
 /* ---- 9: pixel fire ---- */
@@ -343,7 +402,7 @@ static const char FIRE[] =
     "}\n";
 
 static const char *GLSL[NSTYLE] = {
-    RAIN, COPPER, STARS, PLANET, MAZE, ALIENS, ASTRO, PLASMA16, TAPE, FIRE
+    RAIN, COPPER, ROTO, LANDER, MAZE, ALIENS, ASTRO, PLASMA16, TAPE, FIRE
 };
 static GLuint g_prog[NSTYLE];
 static float  g_t;
@@ -669,6 +728,236 @@ static void hud(int score, int lives, const char *what, int n, int hi, const cha
     dome_text_arc(&g_pix, buf, HR, 90.0f, HH, 0.8f, 0.8f, 0.9f, 0.8f);
     if (banner > 0 && msg[0])
         dome_text_arc(&g_pix, msg, 30.0f, 90.0f, 7.0f, mcol[0], mcol[1], mcol[2], fminf(1.0f, banner * 2.0f));
+}
+
+/* ---------------------------------------------------------------- */
+/* Lunar lander: a robot flies a lander down onto jagged ground. The  */
+/* pads pay a bonus (x2 wide, x3, x5 narrow); fuel left over scores   */
+/* too. Touch down too fast, tilted or off a pad and it is a crash.   */
+/* Each landing is a new level: new ground, more gravity, less fuel.  */
+/* The ground and the lander are drawn by the shader (u_ter, u_ship); */
+/* the sparks and the score are dots.                                 */
+/* ---------------------------------------------------------------- */
+#define LN 128                          /* ground columns across x -1..1 */
+enum { LD_FLY, LD_DOWN, LD_CRASH, LD_OVER };
+static struct {
+    float h[LN];                        /* ground height, plane y */
+    int   pad[LN];                      /* bonus of the pad here, 0 = none */
+    int   label[LN];                    /* bonus written here, under its pad */
+    float padmid[LN];
+    float x, y, vx, vy, ang, thr, fuel, fuel0, t, banner, skill, err;
+    int   state, level, lives, score, hi, target, dirty;
+    char  msg[32];
+} D;
+static GLuint g_ter_tex;
+static const float LS = 0.055f;         /* lander size: matches the shader */
+
+static float ld_ground(float x)
+{
+    float u = (x + 1.0f) * 0.5f * LN;
+    int i = (int)u; i = i < 0 ? 0 : i >= LN ? LN - 1 : i;
+    return D.h[i];
+}
+
+static void ld_terrain(void)
+{
+    float h[LN + 1];
+    h[0] = -0.3f - 0.3f * rnd(); h[LN] = -0.3f - 0.3f * rnd();
+    for (int step = LN / 2, amp = 0; step >= 1; step /= 2, amp++)      /* jagged hills */
+        for (int i = step; i < LN; i += 2 * step)
+            h[i] = 0.5f * (h[i - step] + h[i + step]) + (rnd() - 0.5f) * 0.7f * powf(0.6f, (float)amp);
+    for (int i = 0; i < LN; i++) {
+        float x = (i + 0.5f) / LN * 2.0f - 1.0f;
+        float lo = -sqrtf(fmaxf(0.0f, 1.0f - x * x)) + 0.14f;       /* keep it inside the dome */
+        D.h[i] = fminf(fmaxf(h[i], lo), -0.08f);
+        D.pad[i] = 0; D.label[i] = 0; D.padmid[i] = 0;
+    }
+    static const int BONUS[3] = { 2, 3, 5 }, WIDE[3] = { 12, 9, 7 };
+    for (int k = 0; k < 3; k++) {
+        for (int tries = 0; tries < 50; tries++) {
+            int w = WIDE[k], c = 16 + rand() % (LN - 32 - w);
+            int ok = 1;
+            for (int i = c - 9; i < c + w + 9; i++) if (i >= 0 && i < LN && D.label[i]) ok = 0;
+            if (!ok) continue;
+            float y = D.h[c + w / 2];
+            if (k == 2) for (int i = c; i < c + w; i++) y = fminf(y, D.h[i]);   /* x5 sits low */
+            for (int i = c; i < c + w; i++) {
+                D.h[i] = y; D.pad[i] = BONUS[k];
+            }
+            for (int i = c - 4; i < c + w + 4; i++) {           /* room for the label */
+                D.label[i] = BONUS[k];
+                D.padmid[i] = ((c + w * 0.5f) / LN) * 2.0f - 1.0f;
+            }
+            break;
+        }
+    }
+    D.dirty = 1;
+}
+
+static void ld_upload(void)
+{
+    if (!g_ter_tex) {
+        glGenTextures(1, &g_ter_tex);
+        glBindTexture(GL_TEXTURE_2D, g_ter_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        D.dirty = 1;
+    }
+    if (!D.dirty) return;
+    unsigned char t[LN * 4];
+    for (int i = 0; i < LN; i++) {
+        float r = (D.h[i] + 0.98f) / 1.03f;
+        t[i * 4] = (unsigned char)(fminf(fmaxf(r, 0.0f), 1.0f) * 255.0f + 0.5f);
+        t[i * 4 + 1] = (unsigned char)(D.pad[i] * 255 / 10);
+        t[i * 4 + 2] = (unsigned char)((D.padmid[i] + 1.0f) * 0.5f * 255.0f + 0.5f);
+        t[i * 4 + 3] = (unsigned char)(255 - D.label[i] * 255 / 10);
+        /* the shader snaps heights to its pixels, so store them exactly */
+        D.h[i] = t[i * 4] / 255.0f * 1.03f - 0.98f;
+    }
+    glBindTexture(GL_TEXTURE_2D, g_ter_tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, LN, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, t);
+    D.dirty = 0;
+}
+
+/* a fresh lander at the top, aiming for one of the pads */
+static void ld_launch(void)
+{
+    D.x = (rnd() - 0.5f) * 1.0f; D.y = 0.62f;
+    D.vx = (rnd() - 0.5f) * 0.12f; D.vy = 0.0f; D.ang = 0.0f; D.thr = 0;
+    D.fuel0 = D.fuel = fmaxf(450.0f, 1000.0f - 50.0f * (D.level - 1));
+    D.state = LD_FLY; D.t = 0;
+    D.skill = 0.8f + 0.5f * rnd();
+    D.err = rnd() < 0.12f ? 0.2f + 0.15f * rnd() : 0.0f;   /* now and then it misjudges the height */
+    int best = -1; float bv = -1;
+    for (int i = 0; i < LN; i++)
+        if (D.pad[i] && (i == 0 || D.pad[i - 1] != D.pad[i])) {
+            float v = D.pad[i] * (0.6f + 0.8f * rnd()) - fabsf(D.padmid[i] - D.x) * 2.0f;
+            if (v > bv) { bv = v; best = i; }
+        }
+    D.target = best;
+}
+
+static void ld_level(int n)
+{
+    D.level = n;
+    ld_terrain();
+    ld_launch();
+    snprintf(D.msg, sizeof D.msg, "LEVEL %d", n);
+    D.banner = 2.0f;
+}
+
+static void ld_new_game(void)
+{
+    D.lives = 3; D.score = 0;
+    ld_level(1);
+}
+
+static void ld_plate(float px, float py, float *ox, float *oy)   /* flat -> dot coordinates */
+{
+    float k = 1.0f + px * px + py * py;
+    *ox = 2.0f * px / k; *oy = 2.0f * py / k;
+}
+
+static void ld_crash(void)
+{
+    float bx, by;
+    ld_plate(D.x, D.y, &bx, &by);
+    boom(bx, by, 1, (const float[3]){ 1.0f, 0.75f, 0.2f });
+    boom(bx, by, 1, (const float[3]){ 0.9f, 0.9f, 0.95f });
+    D.state = LD_CRASH; D.t = 0; D.thr = 0;
+    snprintf(D.msg, sizeof D.msg, D.fuel <= 0 ? "OUT OF FUEL" : "CRASHED");
+    D.banner = 2.5f;
+}
+
+static void lander_step(float dt)
+{
+    if (!D.level) ld_new_game();
+    for (int i = 0; i < NEXP; i++) if (g_ex[i].on && (g_ex[i].t += dt) > (g_ex[i].big ? 1.4f : 0.7f)) g_ex[i].on = 0;
+    D.banner -= dt;
+    D.t += dt;
+    if (D.state == LD_DOWN) { if (D.t > 3.0f) ld_level(D.level + 1); return; }
+    if (D.state == LD_CRASH) {
+        if (D.t > 2.5f) { if (--D.lives <= 0) { D.state = LD_OVER; D.t = 0; snprintf(D.msg, sizeof D.msg, "GAME OVER"); D.banner = 4; } else ld_launch(); }
+        return;
+    }
+    if (D.state == LD_OVER) { if (D.t > 4.0f) ld_new_game(); return; }
+
+    float g = 0.030f + 0.004f * D.level, T = 0.105f;
+    float foot = 0.8f * LS;
+    /* the robot pilot: a wanted velocity from where the pad is, then the
+     * push that gets it there, then tilt the lander to give that push */
+    float xp = D.target >= 0 ? D.padmid[D.target] : 0.0f;
+    float hp = D.target >= 0 ? D.h[D.target] : -0.5f;
+    float dx = xp - D.x, alt = D.y - foot - hp;
+    float vxd = fmaxf(-0.11f, fminf(0.11f, 0.7f * dx * D.skill));
+    float vyd;
+    if (fabsf(dx) > 0.025f) {
+        float top = -1.0f;                                         /* clear the hills on the way */
+        float a = fminf(D.x, xp), b = fmaxf(D.x, xp);
+        for (float x = a - 0.06f; x <= b + 0.06f; x += 0.01f) top = fmaxf(top, ld_ground(x));
+        vyd = D.y - foot < top + 0.12f ? 0.05f : (D.y - foot > top + 0.25f ? -0.05f : 0.0f);
+    } else vyd = -fminf(0.12f, 0.022f + 0.3f * (alt + D.err) * D.skill);
+    float ax = 2.2f * (vxd - D.vx), ay = 2.2f * (vyd - D.vy) + g;
+    if (ay < 0.0f) ay = 0.0f;
+    float want = atan2f(-ax, ay);
+    float lim = alt < 0.06f ? 0.05f : 1.1f;
+    want = fmaxf(-lim, fminf(lim, want));
+    float da = want - D.ang, turn = 2.4f * dt;
+    D.ang += fmaxf(-turn, fminf(turn, da));
+    float need = sqrtf(ax * ax + ay * ay) * cosf(D.ang - want) / T;
+    D.thr = D.fuel > 0 ? fmaxf(0.0f, fminf(1.0f, need)) : 0.0f;
+    D.fuel = fmaxf(0.0f, D.fuel - D.thr * 55.0f * dt);
+    D.vx += -sinf(D.ang) * T * D.thr * dt;
+    D.vy += (cosf(D.ang) * T * D.thr - g) * dt;
+    D.x += D.vx * dt; D.y += D.vy * dt;
+    if (D.x < -0.97f || D.x > 0.97f || D.y > 0.95f) { D.vx = -D.vx * 0.5f; D.x = fmaxf(-0.97f, fminf(0.97f, D.x)); }
+
+    /* touchdown: both feet */
+    float fx = 0.7f * LS, gl = ld_ground(D.x - fx), gr = ld_ground(D.x + fx), gm = ld_ground(D.x);
+    float low = D.y - foot;
+    if (low <= fmaxf(fmaxf(gl, gr), gm)) {
+        int i0 = (int)((D.x - fx + 1.0f) * 0.5f * LN), i1 = (int)((D.x + fx + 1.0f) * 0.5f * LN);
+        i0 = i0 < 0 ? 0 : i0 >= LN ? LN - 1 : i0; i1 = i1 < 0 ? 0 : i1 >= LN ? LN - 1 : i1;
+        int pad = D.pad[i0] && D.pad[i0] == D.pad[i1] ? D.pad[i0] : 0;
+        if (pad && D.vy > -0.075f && fabsf(D.vx) < 0.05f && fabsf(D.ang) < 0.2f) {
+            int pts = 50 * pad + (int)D.fuel / 2;
+            D.score += pts;
+            if (D.score > D.hi) D.hi = D.score;
+            D.y = D.h[i0] + foot; D.vx = D.vy = 0; D.thr = 0;
+            D.state = LD_DOWN; D.t = 0;
+            snprintf(D.msg, sizeof D.msg, "LANDED x%d  %d", pad, pts);
+            D.banner = 3.0f;
+        } else ld_crash();
+    }
+}
+
+static void lander_uniforms(GLuint p)
+{
+    glActiveTexture(GL_TEXTURE1);
+    ld_upload();
+    glBindTexture(GL_TEXTURE_2D, g_ter_tex);
+    glUniform1i(glGetUniformLocation(p, "u_ter"), 1);
+    glActiveTexture(GL_TEXTURE0);
+    glUniform4f(glGetUniformLocation(p, "u_ship"), D.x, D.y, D.ang, D.thr);
+    glUniform4f(glGetUniformLocation(p, "u_g"), D.state == LD_CRASH || D.state == LD_OVER ? 1.0f : 0.0f,
+                D.state == LD_DOWN ? 1.0f : 0.0f, 0, 0);
+}
+
+static void lander_draw(void)
+{
+    dome_points_clear(&g_pix);
+    draw_booms();
+    hud(D.score, D.lives, "LEVEL", D.level, D.hi, D.msg, D.banner, (const float[3]){ 1.0f, 0.9f, 0.4f });
+    char buf[40];
+    snprintf(buf, sizeof buf, "FUEL %04d", (int)D.fuel);
+    float fc = D.fuel < D.fuel0 * 0.2f ? 1.0f : 0.6f;
+    dome_text_arc(&g_pix, buf, 79.0f, 140.0f, 4.5f, 1.0f, fc, fc * 0.5f, 0.95f);
+    snprintf(buf, sizeof buf, "V %03d H %03d", (int)fabsf(D.vy * 1000.0f), (int)fabsf(D.vx * 1000.0f));
+    dome_text_arc(&g_pix, buf, 79.0f, 40.0f, 4.5f, 0.7f, 0.9f, 1.0f, 0.95f);
+    dome_points_upload(&g_pix);
 }
 
 /* ---------------------------------------------------------------- */
@@ -1853,6 +2142,772 @@ static void scroller(float t)
     dome_points_upload(&g_scroll);
 }
 
+/* ================================================================ */
+/* the tape loader (style 8)                                         */
+/* ================================================================ */
+/* ---- tape loading: a Spectrum-style screen loader --------------------
+ * The picture is drawn (or read from a photo) into a 256x192 RGB canvas,
+ * then converted the way a real 8-bit screen works: one bit per pixel,
+ * plus one ink and one paper colour (from 15) for each 8x8 cell, so the
+ * colours clash at cell edges. It then "loads" in the real order: the
+ * bitmap in thirds, a pixel line of every character row in turn, and the
+ * colours last. */
+
+#define TW 256
+#define TH 192
+static float g_cv[TH][TW][3];          /* canvas, 0..1 RGB */
+static unsigned short g_cid[TH][TW];   /* shape ids, for black outlines */
+static unsigned short g_id;
+static int g_outline;
+static unsigned int g_seed = 1;
+static float trnd(void) { g_seed = g_seed * 1664525u + 1013904223u; return (g_seed >> 8) / 16777216.0f; }
+static float hsh(int x, int y, int k)
+{
+    unsigned int h = (unsigned)x * 374761393u + (unsigned)y * 668265263u + (unsigned)k * 2246822519u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return ((h ^ (h >> 16)) & 0xffffff) / 16777216.0f;
+}
+
+static void px(int x, int y, const float c[3], float a)
+{
+    if (x < 0 || y < 0 || x >= TW || y >= TH) return;
+    for (int k = 0; k < 3; k++) g_cv[y][x][k] += (c[k] - g_cv[y][x][k]) * a;
+    if (a > 0.5f) g_cid[y][x] = g_outline ? g_id : 0;
+}
+#define C3(r, g, b) ((const float[3]){ (r), (g), (b) })
+static void shape(int outline) { g_outline = outline; g_id++; }
+
+static void vgrad(int y0, int y1, const float a[3], const float b[3])
+{
+    shape(0);
+    for (int y = y0; y < y1; y++) {
+        float t = (float)(y - y0) / (float)(y1 - y0 > 1 ? y1 - y0 - 1 : 1);
+        float c[3] = { a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t };
+        for (int x = 0; x < TW; x++) px(x, y, c, 1.0f);
+    }
+}
+static void rect(float x0, float y0, float x1, float y1, const float c[3])
+{
+    for (int y = (int)y0; y < (int)y1; y++)
+        for (int x = (int)x0; x < (int)x1; x++) px(x, y, c, 1.0f);
+}
+static void disc(float cx, float cy, float r, const float c[3], float a)
+{
+    for (int y = (int)(cy - r - 1); y <= (int)(cy + r + 1); y++)
+        for (int x = (int)(cx - r - 1); x <= (int)(cx + r + 1); x++) {
+            float d = sqrtf((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy));
+            if (d < r) px(x, y, c, a);
+        }
+}
+static void ellipse(float cx, float cy, float rx, float ry, const float c[3])
+{
+    for (int y = (int)(cy - ry - 1); y <= (int)(cy + ry + 1); y++)
+        for (int x = (int)(cx - rx - 1); x <= (int)(cx + rx + 1); x++) {
+            float u = (x + 0.5f - cx) / rx, v = (y + 0.5f - cy) / ry;
+            if (u * u + v * v < 1.0f) px(x, y, c, 1.0f);
+        }
+}
+static void glow(float cx, float cy, float r, const float c[3], float a)
+{
+    for (int y = (int)(cy - r); y <= (int)(cy + r); y++)
+        for (int x = (int)(cx - r); x <= (int)(cx + r); x++) {
+            float d = sqrtf((x - cx) * (x - cx) + (y - cy) * (y - cy)) / r;
+            if (d < 1.0f) {
+                if (x < 0 || y < 0 || x >= TW || y >= TH) continue;
+                float k = (1.0f - d) * (1.0f - d) * a;
+                for (int i = 0; i < 3; i++) g_cv[y][x][i] = fminf(1.0f, g_cv[y][x][i] + c[i] * k);
+            }
+        }
+}
+/* filled polygon, points as x,y pairs */
+static void poly(int n, const float *p, const float c[3])
+{
+    float y0 = 1e9f, y1 = -1e9f;
+    for (int i = 0; i < n; i++) { y0 = fminf(y0, p[2 * i + 1]); y1 = fmaxf(y1, p[2 * i + 1]); }
+    for (int y = (int)floorf(y0); y <= (int)ceilf(y1); y++) {
+        float yc = y + 0.5f, xs[32]; int k = 0;
+        for (int i = 0; i < n && k < 32; i++) {
+            float ax = p[2 * i], ay = p[2 * i + 1], bx = p[2 * ((i + 1) % n)], by = p[2 * ((i + 1) % n) + 1];
+            if ((ay <= yc && by > yc) || (by <= yc && ay > yc)) xs[k++] = ax + (yc - ay) / (by - ay) * (bx - ax);
+        }
+        for (int i = 1; i < k; i++) for (int j = i; j > 0 && xs[j - 1] > xs[j]; j--) { float t = xs[j]; xs[j] = xs[j - 1]; xs[j - 1] = t; }
+        for (int i = 0; i + 1 < k; i += 2)
+            for (int x = (int)ceilf(xs[i] - 0.5f); x < (int)ceilf(xs[i + 1] - 0.5f); x++) px(x, y, c, 1.0f);
+    }
+}
+static void tri(float ax, float ay, float bx, float by, float cx, float cy, const float c[3])
+{ float p[6] = { ax, ay, bx, by, cx, cy }; poly(3, p, c); }
+static void quad(float ax, float ay, float bx, float by, float cx, float cy, float dx, float dy, const float c[3])
+{ float p[8] = { ax, ay, bx, by, cx, cy, dx, dy }; poly(4, p, c); }
+static void line(float x0, float y0, float x1, float y1, float w, const float c[3])
+{
+    float dx = x1 - x0, dy = y1 - y0, l = sqrtf(dx * dx + dy * dy);
+    if (l < 1e-3f) return;
+    float nx = -dy / l * w * 0.5f, ny = dx / l * w * 0.5f;
+    quad(x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, c);
+}
+/* a ridge line filled down to the bottom: heights from a sum of sines */
+static void ridge(float base, float amp, float f1, float f2, float ph, float jag, const float c[3])
+{
+    for (int x = 0; x < TW; x++) {
+        float h = base - amp * (0.6f * sinf(x * f1 + ph) + 0.4f * sinf(x * f2 + ph * 2.3f))
+                - jag * (hsh(x / 3, 0, (int)(ph * 100)) - 0.5f);
+        for (int y = (int)h; y < TH; y++) px(x, y, c, 1.0f);
+    }
+}
+static void stars(int n, int ymax)
+{
+    for (int i = 0; i < n; i++) {
+        int x = (int)(trnd() * TW), y = (int)(trnd() * ymax);
+        float b = 0.6f + 0.4f * trnd();
+        px(x, y, C3(b, b, b), 1.0f);
+        if (trnd() < 0.12f) { px(x + 1, y, C3(b, b, b), 1.0f); px(x - 1, y, C3(b, b, b), 1.0f);
+                              px(x, y + 1, C3(b, b, b), 1.0f); px(x, y - 1, C3(b, b, b), 1.0f); }
+    }
+}
+static void outline_pass(void)
+{
+    static unsigned short id[TH][TW];
+    memcpy(id, g_cid, sizeof id);
+    for (int y = 0; y < TH; y++)
+        for (int x = 0; x < TW; x++) {
+            unsigned short a = id[y][x];
+            unsigned short r = x + 1 < TW ? id[y][x + 1] : a, d = y + 1 < TH ? id[y + 1][x] : a;
+            unsigned short l = x > 0 ? id[y][x - 1] : a, u = y > 0 ? id[y - 1][x] : a;
+            /* the outline goes on the outside of the nearer (higher id) shape */
+            if (a < r || a < d || a < l || a < u) {
+                unsigned short m = r; if (d > m) m = d; if (l > m) m = l; if (u > m) m = u;
+                if (m && m > a) { g_cv[y][x][0] = g_cv[y][x][1] = g_cv[y][x][2] = 0.0f; }
+            }
+        }
+}
+
+/* ---- the pictures: all made up for this program ---- */
+static void pic_lighthouse(void)
+{
+    vgrad(0, 120, C3(0.02f, 0.02f, 0.25f), C3(0.6f, 0.1f, 0.65f));
+    stars(70, 90);
+    float mx = 40 + trnd() * 60;
+    shape(1); disc(mx, 32, 14, C3(1, 1, 0.85f), 1);
+    shape(0); disc(mx + 6, 28, 12, C3(0.07f, 0.05f, 0.3f), 1);
+    vgrad(120, 192, C3(0.05f, 0.1f, 0.55f), C3(0.0f, 0.0f, 0.2f));
+    for (int i = 0; i < 40; i++) {                       /* moonlight on the waves */
+        float y = 124 + i * 1.7f, w = 3 + trnd() * (16 - i * 0.25f);
+        rect(mx - w + trnd() * 6, y, mx + w, y + 1, C3(0.9f, 0.9f, 0.6f));
+    }
+    shape(1);
+    float rk[] = { 150, 192, 160, 150, 175, 132, 205, 128, 230, 138, 256, 130, 256, 192 };
+    poly(7, rk, C3(0.25f, 0.2f, 0.2f));
+    shape(1); quad(190, 132, 214, 132, 208, 52, 196, 52, C3(0.95f, 0.95f, 0.95f));
+    for (int b = 0; b < 3; b++) {
+        float y0 = 60 + b * 26, y1 = y0 + 11;
+        float x0 = 196 - (y0 - 52) * 0.075f, x1 = 208 + (y0 - 52) * 0.075f;
+        float x2 = 196 - (y1 - 52) * 0.075f, x3 = 208 + (y1 - 52) * 0.075f;
+        quad(x0, y0, x1, y0, x3, y1, x2, y1, C3(0.9f, 0.05f, 0.05f));
+    }
+    shape(1); rect(192, 48, 212, 52, C3(0.1f, 0.1f, 0.1f));
+    shape(1); rect(195, 36, 209, 48, C3(1, 0.95f, 0.3f));
+    shape(1); tri(192, 36, 212, 36, 202, 26, C3(0.9f, 0.05f, 0.05f));
+    shape(0);
+    tri(196, 40, 0, 10, 0, 70, C3(1, 1, 0.5f));          /* the beam */
+    glow(202, 42, 30, C3(1, 1, 0.6f), 0.9f);
+}
+static void pic_castle(void)
+{
+    vgrad(0, 150, C3(0.35f, 0.05f, 0.45f), C3(1.0f, 0.55f, 0.1f));
+    float sx = 60 + trnd() * 140;
+    shape(0); disc(sx, 112, 30, C3(1, 0.95f, 0.3f), 1);
+    for (int i = 0; i < 5; i++) rect(sx - 32, 96 + i * 7, sx + 32, 98 + i * 7, C3(1.0f, 0.5f, 0.15f));
+    shape(1); ridge(128, 10, 0.02f, 0.05f, trnd() * 6, 0, C3(0.1f, 0.4f, 0.1f));
+    float cx = 128;
+    shape(1); rect(cx - 50, 70, cx + 50, 140, C3(0.55f, 0.5f, 0.55f));
+    for (int i = 0; i < 9; i++) rect(cx - 50 + i * 12, 64, cx - 44 + i * 12, 70, C3(0.55f, 0.5f, 0.55f));
+    float tw[3] = { cx - 62, cx - 12, cx + 38 }, th[3] = { 48, 30, 48 };
+    for (int t = 0; t < 3; t++) {
+        shape(1); rect(tw[t], th[t], tw[t] + 24, 140, C3(0.65f, 0.6f, 0.65f));
+        shape(1); tri(tw[t] - 4, th[t], tw[t] + 28, th[t], tw[t] + 12, th[t] - 26, C3(0.2f, 0.25f, 0.8f));
+        shape(1); line(tw[t] + 12, th[t] - 26, tw[t] + 12, th[t] - 40, 1.5f, C3(0.1f, 0.1f, 0.1f));
+        tri(tw[t] + 13, th[t] - 40, tw[t] + 24, th[t] - 36, tw[t] + 13, th[t] - 32, C3(1, 0.1f, 0.1f));
+        shape(1); rect(tw[t] + 9, th[t] + 12, tw[t] + 15, th[t] + 22, C3(1, 0.9f, 0.2f));
+    }
+    shape(1); rect(cx - 9, 112, cx + 9, 140, C3(0.15f, 0.08f, 0.05f));
+    disc(cx, 112, 9, C3(0.15f, 0.08f, 0.05f), 1);
+    shape(1); ridge(178, 8, 0.03f, 0.07f, trnd() * 6, 0, C3(0.0f, 0.55f, 0.0f));
+    shape(1);
+    float pth[] = { cx - 9, 140, cx + 9, 140, cx + 40, 192, cx - 40, 192 };
+    poly(4, pth, C3(0.85f, 0.75f, 0.4f));
+    for (int i = 0; i < 6; i++) {                                 /* birds */
+        float bx = 20 + trnd() * 220, by = 10 + trnd() * 40;
+        shape(0); line(bx - 4, by - 2, bx, by, 1, C3(0, 0, 0)); line(bx, by, bx + 4, by - 2, 1, C3(0, 0, 0));
+    }
+}
+static void pic_city(void)
+{
+    vgrad(0, 140, C3(0.0f, 0.0f, 0.15f), C3(0.3f, 0.05f, 0.4f));
+    stars(50, 70);
+    shape(1); disc(200 + trnd() * 30, 30, 12, C3(1, 1, 0.9f), 1);
+    float x = 0;
+    while (x < TW) {
+        float w = 14 + trnd() * 22, h = 40 + trnd() * 70;
+        float c = 0.15f + trnd() * 0.25f;
+        shape(1); rect(x, 140 - h, x + w, 140, C3(c * 0.6f, c * 0.6f, c));
+        for (float wy = 140 - h + 4; wy < 136; wy += 6)
+            for (float wx = x + 3; wx < x + w - 3; wx += 5)
+                if (trnd() < 0.45f) rect(wx, wy, wx + 2, wy + 3, trnd() < 0.8f ? C3(1, 0.9f, 0.3f) : C3(0.9f, 0.95f, 1));
+        if (trnd() < 0.25f) { shape(1); line(x + w * 0.5f, 140 - h, x + w * 0.5f, 140 - h - 18, 1.5f, C3(0.6f, 0.6f, 0.6f));
+                              shape(0); disc(x + w * 0.5f, 140 - h - 19, 1.5f, C3(1, 0, 0), 1); }
+        x += w + 1;
+    }
+    vgrad(140, 192, C3(0.05f, 0.05f, 0.35f), C3(0.0f, 0.0f, 0.1f));
+    for (int i = 0; i < 160; i++) {                     /* reflections of the windows */
+        float rx = trnd() * TW, ry = 142 + trnd() * 48;
+        rect(rx, ry, rx + 2 + trnd() * 5, ry + 1, C3(1, 0.85f, 0.3f));
+    }
+    shape(1); rect(0, 138, TW, 142, C3(0.3f, 0.3f, 0.3f));
+}
+static void pic_desert(void)
+{
+    vgrad(0, 120, C3(0.1f, 0.5f, 0.95f), C3(0.75f, 0.95f, 1.0f));
+    float sx = 30 + trnd() * 60;
+    shape(0); glow(sx, 30, 40, C3(1, 1, 0.6f), 0.8f);
+    shape(1); disc(sx, 30, 13, C3(1, 1, 0.4f), 1);
+    shape(1); ridge(122, 6, 0.015f, 0.04f, trnd() * 6, 0, C3(0.95f, 0.75f, 0.3f));
+    float px0 = 110 + trnd() * 30;
+    float base[3] = { px0, px0 + 70, px0 - 60 }, hw[3] = { 45, 30, 22 };
+    for (int i = 2; i >= 0; i--) {
+        float b = base[i], w = hw[i], top = 122 - w * 1.2f;
+        shape(1); tri(b - w, 124, b, top, b + w * 0.35f, 124, C3(1.0f, 0.85f, 0.35f));
+        shape(1); tri(b, top, b + w, 124, b + w * 0.35f, 124, C3(0.7f, 0.35f, 0.1f));
+    }
+    shape(1); ridge(150, 10, 0.025f, 0.06f, trnd() * 6, 0, C3(1.0f, 0.8f, 0.35f));
+    shape(1); ridge(175, 9, 0.02f, 0.05f, trnd() * 6, 0, C3(0.85f, 0.55f, 0.2f));
+    float tx = 215 + trnd() * 20;                            /* a palm */
+    shape(1); quad(tx - 3, 172, tx + 3, 172, tx + 9, 108, tx + 5, 108, C3(0.55f, 0.3f, 0.1f));
+    for (int k = 0; k < 6; k++) {
+        float a = -2.6f + k * 0.55f;
+        shape(1); quad(tx + 7, 108, tx + 7 + cosf(a) * 30, 108 + sinf(a) * 14 + 10, tx + 7 + cosf(a + 0.1f) * 24,
+                       108 + sinf(a + 0.1f) * 10 + 8, tx + 7, 104, C3(0.0f, 0.65f, 0.1f));
+    }
+    for (int c = 0; c < 4; c++) {                            /* a caravan on the dunes */
+        float cx = 20 + c * 14, cy = 146 + c * 0.5f;
+        shape(1); ellipse(cx, cy, 5, 3, C3(0.45f, 0.25f, 0.05f));
+        line(cx + 4, cy - 1, cx + 7, cy - 6, 1.5f, C3(0.45f, 0.25f, 0.05f));
+        line(cx - 3, cy + 2, cx - 3, cy + 7, 1, C3(0.45f, 0.25f, 0.05f));
+        line(cx + 3, cy + 2, cx + 3, cy + 7, 1, C3(0.45f, 0.25f, 0.05f));
+    }
+}
+static void pic_mountains(void)
+{
+    vgrad(0, 110, C3(0.1f, 0.35f, 0.9f), C3(0.6f, 0.85f, 1.0f));
+    for (int i = 0; i < 4; i++) {
+        float cx = trnd() * TW, cy = 15 + trnd() * 30;
+        shape(0); for (int k = 0; k < 4; k++) disc(cx + k * 8 - 12, cy + (k & 1) * 2, 7 + (k == 1) * 3, C3(1, 1, 1), 1);
+    }
+    float ph = trnd() * 6;
+    for (int m = 0; m < 3; m++) {
+        float peak = 30 + m * 60 + trnd() * 30, h = 40 + trnd() * 20, w = 70;
+        float top = 110 - h - 30;
+        shape(1); tri(peak - w, 112, peak, top, peak + w, 112, C3(0.35f, 0.35f, 0.55f));
+        tri(peak, top, peak + w, 112, peak + w * 0.3f, 112, C3(0.25f, 0.25f, 0.4f));
+        shape(0);
+        float s = 0.3f;
+        float sn[] = { peak - w * s, top + (112 - top) * s, peak, top, peak + w * s, top + (112 - top) * s,
+                       peak + w * s * 0.5f, top + (112 - top) * s * 0.75f, peak, top + (112 - top) * s * 1.1f,
+                       peak - w * s * 0.5f, top + (112 - top) * s * 0.8f };
+        poly(6, sn, C3(1, 1, 1));
+    }
+    (void)ph;
+    vgrad(112, 150, C3(0.1f, 0.4f, 0.8f), C3(0.05f, 0.2f, 0.6f));
+    for (int y = 112; y < 150; y++)                          /* the peaks in the lake */
+        for (int x = 0; x < TW; x++) {
+            int sy = 112 - (y - 112) * 2;
+            if (sy >= 0 && (y & 1) && hsh(x / 4, y, 9) > 0.3f)
+                for (int k = 0; k < 3; k++) g_cv[y][x][k] = g_cv[y][x][k] * 0.4f + g_cv[sy][x][k] * 0.5f;
+        }
+    shape(1); ridge(160, 6, 0.03f, 0.08f, trnd() * 6, 0, C3(0.1f, 0.5f, 0.1f));
+    for (int i = 0; i < 14; i++) {                           /* pines */
+        float tx = trnd() * TW, ty = 165 + trnd() * 25, h = 26 + trnd() * 22;
+        shape(1); rect(tx - 1.5f, ty - 4, tx + 1.5f, ty + 3, C3(0.4f, 0.2f, 0.05f));
+        for (int k = 0; k < 3; k++) {
+            float y0 = ty - 4 - k * h * 0.28f;
+            tri(tx - 10 + k * 2.5f, y0, tx + 10 - k * 2.5f, y0, tx, y0 - h * 0.45f, C3(0.0f, 0.4f + 0.1f * k, 0.1f));
+        }
+    }
+}
+static void pic_island(void)
+{
+    vgrad(0, 110, C3(0.0f, 0.55f, 1.0f), C3(0.85f, 1.0f, 1.0f));
+    float sx = 180 + trnd() * 50;
+    shape(1); disc(sx, 28, 14, C3(1, 1, 0.3f), 1);
+    vgrad(110, 192, C3(0.0f, 0.75f, 0.85f), C3(0.0f, 0.3f, 0.7f));
+    for (int i = 0; i < 70; i++) {
+        float wx = trnd() * TW, wy = 112 + trnd() * 78;
+        shape(0); rect(wx, wy, wx + 4 + (wy - 110) * 0.12f, wy + 1, C3(0.85f, 1, 1));
+    }
+    float ix = 90 + trnd() * 30;
+    shape(1); ellipse(ix, 150, 70, 14, C3(1.0f, 0.9f, 0.5f));
+    for (int p = 0; p < 3; p++) {
+        float tx = ix - 30 + p * 28, lean = (p - 1) * 8.0f + 4, h = 70 + p * 6 - (p == 1) * 14;
+        float top = 146 - h;
+        shape(1); quad(tx - 3, 146, tx + 3, 146, tx + lean + 2, top, tx + lean - 2, top, C3(0.6f, 0.35f, 0.1f));
+        for (int k = 0; k < 7; k++) {
+            float a = -3.0f + k * 0.5f;
+            float ex = tx + lean + cosf(a) * 30, ey = top + sinf(a) * 14 + 12;
+            shape(1); quad(tx + lean, top, ex, ey, ex - cosf(a) * 8, ey - 3, tx + lean, top - 3, C3(0.0f, 0.7f, 0.0f));
+        }
+        shape(1); disc(tx + lean, top + 3, 3, C3(0.45f, 0.25f, 0.05f), 1);
+    }
+    float bx = 200 + trnd() * 30;                             /* a sailboat */
+    shape(1); quad(bx - 18, 128, bx + 18, 128, bx + 12, 136, bx - 12, 136, C3(0.85f, 0.1f, 0.1f));
+    shape(1); tri(bx, 126, bx, 90, bx + 18, 126, C3(1, 1, 1));
+    shape(1); tri(bx - 2, 126, bx - 2, 96, bx - 16, 126, C3(1, 1, 0.6f));
+}
+static void pic_astronaut(void)
+{
+    vgrad(0, 192, C3(0.0f, 0.0f, 0.1f), C3(0.1f, 0.0f, 0.25f));
+    stars(110, 192);
+    float pxp = 30 + trnd() * 40;
+    shape(1); disc(pxp, 150, 60, C3(0.2f, 0.4f, 0.9f), 1);       /* a planet behind */
+    shape(0); for (int i = 0; i < 5; i++) ellipse(pxp - 30 + trnd() * 60, 110 + trnd() * 60, 18, 6, C3(0.2f, 0.75f, 0.3f));
+    shape(1); ellipse(128, 200, 95, 55, C3(0.92f, 0.92f, 0.92f));  /* shoulders */
+    shape(1); rect(108, 150, 148, 165, C3(0.6f, 0.6f, 0.65f));     /* neck ring */
+    shape(1); disc(128, 95, 62, C3(0.95f, 0.95f, 0.95f), 1);        /* helmet */
+    shape(1); ellipse(128, 98, 46, 40, C3(0.95f, 0.75f, 0.1f));    /* gold visor */
+    shape(0);
+    for (int y = 58; y < 140; y++)                                /* a curve of planet in the visor */
+        for (int x = 82; x < 175; x++) {
+            float u = (x - 128) / 46.0f, v = (y - 98) / 40.0f;
+            if (u * u + v * v < 1) {
+                float d = sqrtf((u + 0.4f) * (u + 0.4f) + (v - 0.9f) * (v - 0.9f));
+                if (d < 0.7f) px(x, y, C3(0.2f, 0.35f, 0.85f), 1);
+                else if (d < 0.78f) px(x, y, C3(0.4f, 0.9f, 1.0f), 1);
+                float dk = u * 0.7f + v * 0.7f;
+                if (dk > 0.55f) px(x, y, C3(0.55f, 0.3f, 0.05f), 1);
+            }
+        }
+    glow(108, 76, 18, C3(1, 1, 1), 1.0f);                         /* reflection */
+    shape(1); rect(84, 170, 104, 186, C3(0.85f, 0.1f, 0.1f));    /* badges */
+    shape(1); rect(152, 170, 172, 186, C3(0.1f, 0.3f, 0.9f));
+    rect(155, 175, 169, 177, C3(1, 1, 1));
+    shape(1); rect(60, 104, 68, 128, C3(0.6f, 0.6f, 0.65f));    /* helmet light */
+    rect(188, 104, 196, 128, C3(0.6f, 0.6f, 0.65f));
+    shape(0); disc(64, 108, 3, C3(1, 0.2f, 0.2f), 1); disc(192, 108, 3, C3(0.2f, 1, 0.2f), 1);
+}
+static void pic_explorer(void)
+{
+    vgrad(0, 192, C3(0.15f, 0.55f, 0.15f), C3(0.0f, 0.25f, 0.05f));
+    for (int i = 0; i < 40; i++) {                                 /* jungle leaves */
+        float lx = trnd() * TW, ly = trnd() * 192, a = trnd() * 6.28f, l = 14 + trnd() * 18;
+        shape(1); quad(lx, ly, lx + cosf(a) * l * 0.5f + sinf(a) * 5, ly + sinf(a) * l * 0.5f - cosf(a) * 5,
+                       lx + cosf(a) * l, ly + sinf(a) * l,
+                       lx + cosf(a) * l * 0.5f - sinf(a) * 5, ly + sinf(a) * l * 0.5f + cosf(a) * 5,
+                       trnd() < 0.5f ? C3(0.1f, 0.75f, 0.1f) : C3(0.0f, 0.45f, 0.05f));
+    }
+    float skin[3] = { 1.0f, 0.72f, 0.42f }, shade[3] = { 0.85f, 0.4f, 0.18f };
+    shape(1); ellipse(128, 205, 90, 60, C3(0.8f, 0.7f, 0.45f));    /* shirt */
+    shape(1); tri(110, 150, 146, 150, 128, 180, skin);              /* open collar */
+    shape(1); tri(100, 152, 156, 152, 128, 172, C3(0.9f, 0.1f, 0.1f)); /* neckerchief */
+    shape(1); rect(112, 128, 144, 152, shade);                      /* neck */
+    shape(1); ellipse(128, 100, 34, 42, skin);                      /* face */
+    shape(0); ellipse(144, 104, 16, 36, shade);
+    ellipse(128, 100, 30, 38, skin);
+    shape(1); ellipse(94, 102, 6, 10, skin); ellipse(162, 102, 6, 10, skin); /* ears */
+    shape(1); ellipse(114, 96, 7, 4, C3(1, 1, 1)); shape(0); disc(115, 96, 3, C3(0.2f, 0.4f, 0.9f), 1); disc(115, 96, 1.2f, C3(0, 0, 0), 1);
+    shape(1); ellipse(142, 96, 7, 4, C3(1, 1, 1)); shape(0); disc(143, 96, 3, C3(0.2f, 0.4f, 0.9f), 1); disc(143, 96, 1.2f, C3(0, 0, 0), 1);
+    shape(0); line(105, 87, 122, 86, 2.5f, C3(0.35f, 0.2f, 0.05f)); line(134, 86, 151, 87, 2.5f, C3(0.35f, 0.2f, 0.05f));
+    tri(128, 96, 122, 114, 132, 114, shade);                         /* nose */
+    shape(0); line(116, 124, 140, 124, 2, C3(0.6f, 0.15f, 0.1f));    /* a grin */
+    line(116, 124, 112, 121, 1.5f, C3(0.6f, 0.15f, 0.1f));
+    for (int i = 0; i < 60; i++) px(108 + (int)(trnd() * 40), 118 + (int)(trnd() * 22), shade, 1); /* stubble */
+    shape(1); ellipse(128, 70, 66, 12, C3(0.6f, 0.4f, 0.15f));     /* hat brim */
+    shape(1); quad(98, 70, 158, 70, 150, 30, 106, 30, C3(0.7f, 0.5f, 0.2f));
+    shape(0); rect(100, 60, 156, 68, C3(0.3f, 0.15f, 0.05f));        /* hat band */
+    shape(1); line(176, 192, 240, 40, 4, C3(0.5f, 0.3f, 0.1f));      /* a rope coil over the shoulder */
+}
+static void pic_wizard(void)
+{
+    vgrad(0, 192, C3(0.05f, 0.0f, 0.3f), C3(0.3f, 0.0f, 0.4f));
+    stars(60, 120);
+    shape(1); disc(40 + trnd() * 30, 30, 16, C3(1, 1, 0.85f), 1);
+    shape(1); quad(170, 192, 230, 192, 222, 40, 178, 40, C3(0.4f, 0.4f, 0.45f));  /* tower */
+    for (int i = 0; i < 4; i++) rect(176 + i * 12, 32, 182 + i * 12, 40, C3(0.4f, 0.4f, 0.45f));
+    shape(1); rect(195, 70, 205, 86, C3(1, 0.9f, 0.2f));
+    shape(1); ridge(178, 4, 0.03f, 0.07f, trnd() * 6, 0, C3(0.1f, 0.3f, 0.1f));
+    float cx = 100;
+    shape(1); quad(cx - 22, 80, cx + 22, 80, cx + 48, 186, cx - 48, 186, C3(0.1f, 0.2f, 0.85f));  /* robe */
+    shape(0); for (int i = 0; i < 12; i++) {
+        float sx = cx - 30 + trnd() * 60, sy = 100 + trnd() * 80;
+        line(sx - 3, sy, sx + 3, sy, 1, C3(1, 1, 0.3f)); line(sx, sy - 3, sx, sy + 3, 1, C3(1, 1, 0.3f));
+    }
+    shape(1); ellipse(cx, 66, 15, 17, C3(0.95f, 0.7f, 0.5f));                    /* face */
+    shape(1); tri(cx - 16, 70, cx + 16, 70, cx, 132, C3(1, 1, 1));               /* beard */
+    shape(0); disc(cx - 6, 63, 2, C3(0, 0, 0), 1); disc(cx + 6, 63, 2, C3(0, 0, 0), 1);
+    line(cx - 10, 58, cx - 2, 59, 2, C3(1, 1, 1)); line(cx + 2, 59, cx + 10, 58, 2, C3(1, 1, 1));
+    shape(1); ellipse(cx, 52, 30, 6, C3(0.75f, 0.0f, 0.75f));                   /* hat */
+    shape(1); quad(cx - 18, 50, cx + 18, 50, cx + 10, 18, cx + 4, 6, C3(0.75f, 0.0f, 0.75f));
+    tri(cx + 4, 6, cx + 10, 18, cx + 28, 4, C3(0.75f, 0.0f, 0.75f));
+    shape(0); for (int i = 0; i < 5; i++) disc(cx - 10 + trnd() * 20, 22 + trnd() * 24, 1.5f, C3(1, 1, 0.3f), 1);
+    shape(1); line(cx + 40, 186, cx + 52, 60, 4, C3(0.55f, 0.3f, 0.1f));      /* staff */
+    shape(1); ellipse(cx + 28, 120, 8, 6, C3(0.95f, 0.7f, 0.5f));               /* hand */
+    shape(0); glow(cx + 52, 56, 30, C3(0.4f, 1, 1), 1.0f);
+    shape(1); disc(cx + 52, 56, 7, C3(0.7f, 1, 1), 1);
+    for (int i = 0; i < 6; i++) {                                                /* sparks */
+        float a = trnd() * 6.28f, r = 14 + trnd() * 20;
+        shape(0); px((int)(cx + 52 + cosf(a) * r), (int)(56 + sinf(a) * r), C3(1, 1, 1), 1);
+    }
+}
+static void pic_ship(void)
+{
+    vgrad(0, 120, C3(0.9f, 0.3f, 0.1f), C3(1.0f, 0.85f, 0.3f));
+    float sx = 60 + trnd() * 130;
+    shape(0); disc(sx, 112, 26, C3(1, 1, 0.6f), 1);
+    for (int i = 0; i < 3; i++) {
+        float cx = trnd() * TW, cy = 20 + trnd() * 40;
+        ellipse(cx, cy, 30, 5, C3(0.75f, 0.2f, 0.4f));
+    }
+    vgrad(118, 192, C3(0.1f, 0.25f, 0.6f), C3(0.0f, 0.05f, 0.25f));
+    for (int i = 0; i < 30; i++) rect(sx - 20 + trnd() * 40 - i, 120 + i * 2.2f, sx + 20 - trnd() * 30 + i, 121 + i * 2.2f, C3(1, 0.85f, 0.3f));
+    float bx = 120 + trnd() * 40;
+    shape(1); float hull[] = { bx - 70, 130, bx + 74, 126, bx + 54, 158, bx - 50, 158 };
+    poly(4, hull, C3(0.5f, 0.25f, 0.05f));
+    shape(0); rect(bx - 60, 140, bx + 62, 143, C3(1, 0.9f, 0.3f));
+    for (int i = 0; i < 7; i++) rect(bx - 48 + i * 15, 146, bx - 43 + i * 15, 150, C3(0, 0, 0));
+    for (int m = 0; m < 3; m++) {
+        float mx = bx - 40 + m * 42, top = 34 + (m == 1) * -12;
+        shape(1); line(mx, 130, mx, top, 3, C3(0.35f, 0.15f, 0.0f));
+        for (int s = 0; s < 3; s++) {
+            float y0 = top + 8 + s * 28, w = 22 - s * 2 + (m == 1) * 4;
+            shape(1); quad(mx - w, y0, mx + w, y0, mx + w + 4, y0 + 22, mx - w + 2, y0 + 24, C3(0.95f, 0.95f, 0.85f));
+        }
+        shape(1); tri(mx, top, mx + 16, top + 4, mx, top + 8, C3(0.0f, 0.0f, 0.0f));
+    }
+    shape(0); for (int i = 0; i < 80; i++) {
+        float wx = trnd() * TW, wy = 158 + trnd() * 34;
+        rect(wx, wy, wx + 6, wy + 1, C3(0.6f, 0.85f, 1));
+    }
+}
+static void pic_racer(void)
+{
+    /* a racing driver in a helmet, a chequered flag behind */
+    for (int y = 0; y < TH; y++)
+        for (int x = 0; x < TW; x++) {
+            float w = sinf(x * 0.03f + y * 0.01f) * 8;
+            int c = (((int)((x + w) / 20)) + ((int)((y + w) / 20))) & 1;
+            float v = c ? 0.95f : 0.05f;
+            px(x, y, C3(v, v, v), 1);
+        }
+    shape(1); ellipse(128, 210, 110, 70, C3(0.9f, 0.1f, 0.1f));            /* overalls */
+    shape(0); rect(60, 160, 196, 170, C3(1, 1, 1));
+    shape(1); disc(128, 100, 66, C3(0.1f, 0.3f, 0.95f), 1);                 /* helmet */
+    shape(0); for (int y = 34; y < 166; y++) for (int x = 62; x < 194; x++) {
+        float d = (x - 128) * 0.4f + (y - 100) * 0.92f;
+        if (fabsf(d - 10) < 6 && (x - 128) * (x - 128) + (y - 100) * (y - 100) < 66 * 66) px(x, y, C3(1, 1, 0.2f), 1);
+    }
+    shape(1); quad(76, 84, 180, 84, 172, 118, 84, 118, C3(0.05f, 0.05f, 0.05f)); /* visor */
+    shape(0); ellipse(128, 101, 46, 13, C3(0.95f, 0.65f, 0.4f));            /* the eyes in the slot */
+    shape(1); ellipse(112, 100, 7, 4, C3(1, 1, 1)); shape(0); disc(113, 100, 2.5f, C3(0.3f, 0.6f, 0.2f), 1);
+    shape(1); ellipse(144, 100, 7, 4, C3(1, 1, 1)); shape(0); disc(145, 100, 2.5f, C3(0.3f, 0.6f, 0.2f), 1);
+    shape(0); line(102, 92, 122, 93, 2.5f, C3(0.3f, 0.15f, 0.05f)); line(134, 93, 154, 92, 2.5f, C3(0.3f, 0.15f, 0.05f));
+    glow(100, 60, 22, C3(1, 1, 1), 0.8f);
+    shape(1); rect(108, 140, 148, 150, C3(1, 1, 1));
+}
+
+typedef void (*PicFn)(void);
+static const struct { const char *name; PicFn fn; } PICS[] = {
+    { "LIGHTHOUSE", pic_lighthouse }, { "CASTLE", pic_castle }, { "NIGHT CITY", pic_city },
+    { "PYRAMIDS", pic_desert }, { "MOUNTAINS", pic_mountains }, { "ISLAND", pic_island },
+    { "SPACEMAN", pic_astronaut }, { "EXPLORER", pic_explorer }, { "WIZARD", pic_wizard },
+    { "GALLEON", pic_ship }, { "RACER", pic_racer },
+};
+#define NPICS ((int)(sizeof PICS / sizeof PICS[0]))
+
+/* ---- the screen memory ---- */
+static const float ZXC[16][3] = {
+    {0,0,0},{0,0,.84f},{.84f,0,0},{.84f,0,.84f},{0,.84f,0},{0,.84f,.84f},{.84f,.84f,0},{.84f,.84f,.84f},
+    {0,0,0},{0,0,1},{1,0,0},{1,0,1},{0,1,0},{0,1,1},{1,1,0},{1,1,1},
+};
+typedef struct { unsigned char bits[TH][32]; unsigned char attr[24][32]; } ZXScreen;
+
+static const float BAYER[4][4] = {
+    { 0.5f/16, 8.5f/16, 2.5f/16, 10.5f/16 }, { 12.5f/16, 4.5f/16, 14.5f/16, 6.5f/16 },
+    { 3.5f/16, 11.5f/16, 1.5f/16, 9.5f/16 }, { 15.5f/16, 7.5f/16, 13.5f/16, 5.5f/16 },
+};
+
+/* the canvas -> one bit per pixel plus an ink/paper pair per cell */
+static void zx_convert(ZXScreen *s)
+{
+    for (int cy = 0; cy < 24; cy++)
+        for (int cx = 0; cx < 32; cx++) {
+            float best = 1e30f; int bi = 0, bj = 7;
+            for (int br = 0; br < 2; br++)
+                for (int i = 0; i < 8; i++)
+                    for (int j = i; j < 8; j++) {
+                        const float *a = ZXC[br * 8 + i], *b = ZXC[br * 8 + j];
+                        float ab[3] = { b[0] - a[0], b[1] - a[1], b[2] - a[2] };
+                        float ll = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+                        float e = 0;
+                        for (int y = 0; y < 8 && e < best; y++)
+                            for (int x = 0; x < 8; x++) {
+                                const float *p = g_cv[cy * 8 + y][cx * 8 + x];
+                                float t = ll > 0 ? ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / ll : 0;
+                                t = t < 0 ? 0 : t > 1 ? 1 : t;
+                                float d0 = p[0] - a[0] - ab[0] * t, d1 = p[1] - a[1] - ab[1] * t, d2 = p[2] - a[2] - ab[2] * t;
+                                /* how far the mixed colour is off, plus how far each dot is
+                                 * from what it stands for: so a sunset is red and yellow
+                                 * dots, not red and cyan ones that happen to average out */
+                                float ea = (p[0] - a[0]) * (p[0] - a[0]) + (p[1] - a[1]) * (p[1] - a[1]) + (p[2] - a[2]) * (p[2] - a[2]);
+                                float eb = (p[0] - b[0]) * (p[0] - b[0]) + (p[1] - b[1]) * (p[1] - b[1]) + (p[2] - b[2]) * (p[2] - b[2]);
+                                e += d0 * d0 + d1 * d1 + d2 * d2 + 0.8f * ((1.0f - t) * ea + t * eb);
+                            }
+                        if (e < best) { best = e; bi = br * 8 + i; bj = br * 8 + j; }
+                    }
+            /* ink = the darker of the two, so while the pixels load in black on
+             * white, before the colours arrive, the picture already reads right */
+            const float *a = ZXC[bi], *b = ZXC[bj];
+            float ab[3] = { b[0] - a[0], b[1] - a[1], b[2] - a[2] };
+            float ll = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+            for (int y = 0; y < 8; y++) {
+                unsigned char byte = 0;
+                for (int x = 0; x < 8; x++) {
+                    const float *p = g_cv[cy * 8 + y][cx * 8 + x];
+                    float t = ll > 0 ? ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1] + (p[2] - a[2]) * ab[2]) / ll : 0;
+                    if (t <= BAYER[y & 3][x & 3]) byte |= (unsigned char)(0x80 >> x);
+                }
+                s->bits[cy * 8 + y][cx] = byte;
+            }
+            int bright = bj >= 8 || bi >= 8;
+            s->attr[cy][cx] = (unsigned char)((bright << 6) | ((bj & 7) << 3) | (bi & 7));   /* paper b, ink a */
+        }
+}
+
+/* screen memory -> RGB, one row of pixels */
+static void zx_row(const ZXScreen *s, int y, unsigned char *out)
+{
+    for (int x = 0; x < TW; x++) {
+        unsigned char at = s->attr[y / 8][x / 8];
+        int on = (s->bits[y][x / 8] >> (7 - (x & 7))) & 1;
+        int c = (on ? (at & 7) : ((at >> 3) & 7)) + ((at >> 6) & 1) * 8;
+        for (int k = 0; k < 3; k++) out[x * 3 + k] = (unsigned char)(ZXC[c][k] * 255.0f + 0.5f);
+    }
+}
+
+
+/* ---- your own photos: any .jpg, .png, .bmp or .gif in a "tapes" folder next
+ * to the program. Smaller files load faster; 1024 pixels across is plenty. ---- */
+#define MAXPHOTO 200
+static char *g_photo[MAXPHOTO];
+static int   g_nphoto;
+
+static int is_image(const char *n)
+{
+    const char *e = strrchr(n, '.');
+    if (!e) return 0;
+    char x[8] = { 0 };
+    for (int i = 0; i < 6 && e[i + 1]; i++) x[i] = (char)(e[i + 1] | 0x20);
+    return !strcmp(x, "jpg") || !strcmp(x, "jpeg") || !strcmp(x, "png") ||
+           !strcmp(x, "bmp") || !strcmp(x, "gif");
+}
+
+static void photos_scan(void)
+{
+    DIR *d = opendir(dome_path("tapes"));
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d)) && g_nphoto < MAXPHOTO)
+        if (e->d_name[0] != '.' && is_image(e->d_name)) {
+            size_t n = strlen(e->d_name) + 1;
+            g_photo[g_nphoto] = malloc(n);
+            memcpy(g_photo[g_nphoto++], e->d_name, n);
+        }
+    closedir(d);
+    if (g_nphoto) printf("Retro: %d photo%s in the tapes folder\n", g_nphoto, g_nphoto == 1 ? "" : "s");
+}
+
+/* the photo, cropped to 4:3 and averaged down onto the canvas, with the
+ * colour and contrast pushed up the way the old artists did */
+static int photo_load(const char *file)
+{
+    char rel[300];
+    snprintf(rel, sizeof rel, "tapes/%s", file);
+    int w, h, n;
+    unsigned char *img = stbi_load(dome_path(rel), &w, &h, &n, 3);
+    if (!img) { printf("Retro: could not read %s\n", rel); return 0; }
+    float cw = (float)w, ch = cw * 0.75f;
+    if (ch > h) { ch = (float)h; cw = ch / 0.75f; }
+    float x0 = (w - cw) * 0.5f, y0 = (h - ch) * 0.5f;
+    for (int y = 0; y < TH; y++)
+        for (int x = 0; x < TW; x++) {
+            int ax = (int)(x0 + x * cw / TW), bx = (int)(x0 + (x + 1) * cw / TW);
+            int ay = (int)(y0 + y * ch / TH), by = (int)(y0 + (y + 1) * ch / TH);
+            if (bx <= ax) bx = ax + 1;
+            if (by <= ay) by = ay + 1;
+            int sx = bx - ax > 4 ? (bx - ax) / 4 : 1, sy = by - ay > 4 ? (by - ay) / 4 : 1;
+            float s[3] = { 0, 0, 0 }; int k = 0;
+            for (int yy = ay; yy < by && yy < h; yy += sy)
+                for (int xx = ax; xx < bx && xx < w; xx += sx, k++)
+                    for (int i = 0; i < 3; i++) s[i] += img[((size_t)yy * w + xx) * 3 + i];
+            float c[3], l;
+            for (int i = 0; i < 3; i++) c[i] = k ? s[i] / (255.0f * k) : 0;
+            l = 0.3f * c[0] + 0.59f * c[1] + 0.11f * c[2];
+            for (int i = 0; i < 3; i++) {
+                float v = l + (c[i] - l) * 1.35f;              /* more colour */
+                v = (v - 0.5f) * 1.15f + 0.5f;                 /* more contrast */
+                g_cv[y][x][i] = v < 0 ? 0 : v > 1 ? 1 : v;
+            }
+        }
+    stbi_image_free(img);
+    return 1;
+}
+
+/* ---- the load itself ---- */
+enum { TP_CLS, TP_PILOT1, TP_HEADER, TP_GAP, TP_PILOT2, TP_DATA, TP_DONE };
+static const float TP_LEN[] = { 1.0f, 2.2f, 0.35f, 0.8f, 1.6f, 16.0f, 9.0f };
+#define TP_BYTES 6912                   /* 6144 of pixels, then 768 of colour */
+
+static ZXScreen g_scr, g_pic;           /* what the TV shows; what is on the tape */
+static GLuint g_scr_tex;
+static unsigned char g_scr_rgb[TH][TW * 3];
+static int   g_dirty0 = TH, g_dirty1 = -1;
+static int   g_tp_phase, g_tp_bytes, g_tp_border;
+static float g_tp_t, g_tp_stripe;
+static char  g_tp_name[11];
+static int   g_deck[NPICS + MAXPHOTO], g_ndeck, g_last = -1;
+
+static void scr_dirty(int y0, int y1)
+{
+    if (y0 < g_dirty0) g_dirty0 = y0;
+    if (y1 > g_dirty1) g_dirty1 = y1;
+}
+
+static void scr_print(int col, int row, const char *s)
+{
+    for (; *s && col < 32; s++, col++) {
+        int ch = (unsigned char)*s;
+        const unsigned char *g = FONT5X7[(ch >= 32 && ch < 127 ? ch : '?') - 32];
+        for (int y = 0; y < 8; y++)
+            g_scr.bits[row * 8 + y][col] = y < 7 ? (unsigned char)(g[y] << 2) : 0;
+    }
+    scr_dirty(row * 8, row * 8 + 7);
+}
+
+/* pick the next picture: a shuffled deck of everything, no repeats until
+ * it has all been shown, and never the same one twice running */
+static void tp_pick(void)
+{
+    int total = NPICS + g_nphoto;
+    if (g_ndeck == 0) {
+        for (int i = 0; i < total; i++) g_deck[i] = i;
+        for (int i = total - 1; i > 0; i--) { int j = rand() % (i + 1), t = g_deck[i]; g_deck[i] = g_deck[j]; g_deck[j] = t; }
+        g_ndeck = total;
+        if (total > 1 && g_deck[g_ndeck - 1] == g_last) { int t = g_deck[0]; g_deck[0] = g_deck[g_ndeck - 1]; g_deck[g_ndeck - 1] = t; }
+    }
+    int pick = g_deck[--g_ndeck];
+    g_last = pick;
+    memset(g_cv, 0, sizeof g_cv);
+    memset(g_cid, 0, sizeof g_cid);
+    g_id = 0;
+    const char *name = NULL;
+    char buf[300];
+    if (pick >= NPICS && photo_load(g_photo[pick - NPICS])) {
+        snprintf(buf, sizeof buf, "%s", g_photo[pick - NPICS]);
+        char *dot = strrchr(buf, '.'); if (dot) *dot = 0;
+        for (char *c = buf; *c; c++) if (*c >= 'a' && *c <= 'z') *c = (char)(*c - 32);
+        name = buf;
+    } else {
+        if (pick >= NPICS) pick = rand() % NPICS;
+        g_seed = (unsigned)rand() * 2654435761u + 1u;
+        PICS[pick].fn();
+        outline_pass();
+        name = PICS[pick].name;
+    }
+    size_t nl = strlen(name) < 10 ? strlen(name) : 10;      /* tape names are ten letters */
+    memcpy(g_tp_name, name, nl); g_tp_name[nl] = 0;
+    zx_convert(&g_pic);
+}
+
+static void tp_phase(int ph)
+{
+    g_tp_phase = ph; g_tp_t = 0;
+    if (ph == TP_CLS) {                                     /* a fresh LOAD "": white screen */
+        memset(g_scr.bits, 0, sizeof g_scr.bits);
+        memset(g_scr.attr, 0x38, sizeof g_scr.attr);        /* white paper, black ink */
+        scr_dirty(0, TH - 1);
+        g_tp_border = 7;
+        tp_pick();
+        printf("Retro: loading %s\n", g_tp_name);
+    }
+    if (ph == TP_GAP) {
+        char line[40];
+        snprintf(line, sizeof line, "Program: %s", g_tp_name);
+        scr_print(0, 0, line);
+    }
+    if (ph == TP_DATA) g_tp_bytes = 0;
+    if (ph == TP_DONE) g_tp_border = 0;
+}
+
+static void tp_reset(void) { g_ndeck = 0; tp_phase(TP_CLS); }
+
+static void tp_update(float dt)
+{
+    g_tp_t += dt;
+    if (g_tp_phase == TP_PILOT1 || g_tp_phase == TP_PILOT2) g_tp_stripe += dt * 9.0f;
+    if (g_tp_phase == TP_HEADER || g_tp_phase == TP_DATA) g_tp_stripe += 1.0f;
+    if (g_tp_phase == TP_DATA) {
+        int want = (int)(g_tp_t / TP_LEN[TP_DATA] * TP_BYTES);
+        if (want > TP_BYTES) want = TP_BYTES;
+        for (; g_tp_bytes < want; g_tp_bytes++) {
+            int i = g_tp_bytes;
+            if (i < 6144) {                                 /* the pixels, in screen-memory order */
+                int l = i / 32, col = i % 32;
+                int y = (l / 64) * 64 + (l % 8) * 8 + (l / 8) % 8;
+                g_scr.bits[y][col] = g_pic.bits[y][col];
+                scr_dirty(y, y);
+            } else {                                        /* then the colours, row by row */
+                int j = i - 6144, row = j / 32;
+                g_scr.attr[row][j % 32] = g_pic.attr[row][j % 32];
+                scr_dirty(row * 8, row * 8 + 7);
+            }
+        }
+    }
+    if (g_tp_t >= TP_LEN[g_tp_phase]) tp_phase(g_tp_phase == TP_DONE ? TP_CLS : g_tp_phase + 1);
+}
+
+static void tp_upload(void)                 /* uses unit 1: unit 0 holds the lens lookup */
+{
+    glActiveTexture(GL_TEXTURE1);
+    if (!g_scr_tex) {
+        glGenTextures(1, &g_scr_tex);
+        glBindTexture(GL_TEXTURE_2D, g_scr_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TW, TH, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+        g_dirty0 = 0; g_dirty1 = TH - 1;
+    }
+    if (g_dirty1 < g_dirty0) return;
+    for (int y = g_dirty0; y <= g_dirty1; y++) zx_row(&g_scr, y, g_scr_rgb[y]);
+    glBindTexture(GL_TEXTURE_2D, g_scr_tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, g_dirty0, TW, g_dirty1 - g_dirty0 + 1,
+                    GL_RGB, GL_UNSIGNED_BYTE, g_scr_rgb[g_dirty0]);
+    g_dirty0 = TH; g_dirty1 = -1;
+}
+
+static void tp_uniforms(GLuint p)
+{
+    tp_upload();
+    glBindTexture(GL_TEXTURE_2D, g_scr_tex);
+    glUniform1i(glGetUniformLocation(p, "u_scr"), 1);
+    glActiveTexture(GL_TEXTURE0);
+    float mode = g_tp_phase == TP_PILOT1 || g_tp_phase == TP_PILOT2 ? 1.0f
+               : g_tp_phase == TP_HEADER || (g_tp_phase == TP_DATA && g_tp_bytes < TP_BYTES) ? 2.0f : 0.0f;
+    glUniform4f(glGetUniformLocation(p, "u_tb"), mode, fmodf(g_tp_stripe, 1000.0f), 0, 0);
+    const float *bc = ZXC[g_tp_border];
+    glUniform3f(glGetUniformLocation(p, "u_bc"), bc[0], bc[1], bc[2]);
+}
+
 /* ---------------------------------------------------------------- */
 static void init(void)
 {
@@ -1876,6 +2931,8 @@ static void init(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     dome_points_init(&g_ast, 40000);
+    photos_scan();
+    tp_reset();
 }
 
 static int style(void)
@@ -1892,6 +2949,8 @@ static void update(const DomeFrame *f)
     if (s == 4) { maze_step(dt); if (M.dirty) m_upload(); }
     if (s == 5) defender_step(dt);
     if (s == 6) asteroids_step(dt);
+    if (s == 8) tp_update(dt);
+    if (s == 3) lander_step(dt);
 }
 
 static void draw(const DomeFrame *f)
@@ -1909,12 +2968,18 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     glUniform1f(glGetUniformLocation(p, "u_grid"), floorf(L.grid + 0.5f));
     if (s == 4) maze_uniforms(p);
+    if (s == 8) tp_uniforms(p);
+    if (s == 3) lander_uniforms(p);
     if (s == 6) glUniform4f(glGetUniformLocation(p, "u_g"), 0, A.flash > 0 ? A.flash : 0.0f, 0, 0);
     dome_surface_end();
     mat3 still; m3_identity(still);
     if (s == 5) {
         defender_draw(g_t);
         dome_draw_points(&g_pix, still, f->fade, 5.0f);
+    }
+    if (s == 3) {
+        lander_draw();
+        dome_draw_points(&g_pix, still, f->fade, 3.5f);
     }
     if (s == 4) {
         maze_draw();
