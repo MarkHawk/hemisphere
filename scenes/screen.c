@@ -10,19 +10,14 @@
  *                      faster; every game is a draw
  *   2 cyborg HUD       driving down a night street seen through a visor:
  *                      target boxes lock on, status text scrolls
- *   3 air traffic      the whole world as a radar globe, turning with the
- *                      ball: flights on great circles between real
- *                      airports, a sweep painting their plots, data tags,
- *                      and a red alert when two get too close
- *   4 ship's terminal  a green text terminal typing out a conversation
+ *   3 ship's terminal  a green text terminal typing out a conversation
  *                      with the ship's computer
- *   5 light grid       neon light-cycles racing over a grid, turning to
+ *   4 light grid       neon light-cycles racing over a grid, turning to
  *                      dodge each other's trails, crashing and returning
- *   6 closedown        colour bars, a test card, the closedown caption,
+ *   5 closedown        colour bars, a test card, the closedown caption,
  *                      static, then the picture collapses to a dot
  *
- * The defence globe ignores the spin and faces Europe and North America;
- * the air traffic globe turns with the ball.
+ * The defence globe ignores the spin and faces Europe and North America.
  * All original designs in the spirit of the era, not copies of any film's
  * or channel's screens. Built for the Pi 3: everything big is drawn by the
  * surface shader from a few sums per pixel, and text is drawn there too,
@@ -39,17 +34,17 @@
 #include <string.h>
 #include <time.h>
 
-#define NSTYLE 7
+#define NSTYLE 6
 static const char *NAMES[NSTYLE] = {
     "defence command", "noughts and crosses", "cyborg HUD",
-    "air traffic", "ship's terminal", "light grid", "closedown"
+    "ship's terminal", "light grid", "closedown"
 };
 
 static struct { float style, speed, text, bright; } L = { 0.0f, 1.0f, 1.0f, 1.0f };
 
 static Param P[] = {
-    { "style",  &L.style,  1.0f, 0.0f, 6.0f, 0,
-      "0 defence, 1 noughts & crosses, 2 HUD, 3 air traffic, 4 terminal, 5 light grid, 6 closedown (N)" },
+    { "style",  &L.style,  1.0f, 0.0f, 5.0f, 0,
+      "0 defence, 1 noughts & crosses, 2 HUD, 3 terminal, 4 light grid, 5 closedown (N)" },
     { "speed",  &L.speed,  0.1f, 0.0f, 4.0f, 0, "speed of the animation" },
     { "text",   &L.text,   1.0f, 0.0f, 1.0f, 0, "readouts round the rim: 0 off, 1 on" },
     { "bright", &L.bright, 0.05f, 0.2f, 2.0f, 0, "brightness" },
@@ -621,231 +616,7 @@ static void hud_update(float dt)
 }
 
 /* ================================================================ */
-/* 3: air traffic globe                                               */
-/* ================================================================ */
-/* The whole world as one radar globe, turning with the ball. Flights
- * cross it on great circles between real airports; a sweep goes round
- * the pole and paints each aircraft as it passes, leaving a trail of
- * older plots. Every aircraft has a data tag (callsign, flight level
- * with ^ climbing or v descending, ground speed) that stays upright to
- * the globe's north. Two aircraft too close together flash red.
- * The callsigns are made up. Tags are drawn by the shader from the text
- * grid (two rows per aircraft); the plots and airports are dots. */
-#define NAC 18
-#define NTRAIL 6
-static const char TRAFFIC[] =
-    U TEXT_GLSL
-    "uniform sampler2D u_map;\n"
-    "uniform vec4 u_ac[18];\n"                    /* position on the globe, and 0 normal, 1 alert, 2 off */
-    "uniform float u_sweep;\n"                    /* the sweep's longitude, radians */
-    "vec4 surface(vec3 dir, vec3 view){\n"
-    "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
-    "  float m = texture2D(u_map, vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI)).r;\n"
-    "  float coast = smoothstep(0.25, 0.5, m) * smoothstep(0.75, 0.5, m);\n"
-    "  float land = smoothstep(0.4, 0.6, m);\n"
-    "  float gy = abs(fract(lat / PI * 18.0 + 0.5) - 0.5);\n"
-    "  float gx = abs(fract(lon / PI * 18.0 + 0.5) - 0.5) * max(cos(lat), 0.15);\n"
-    "  float grid = max(smoothstep(0.01, 0.0, gy), smoothstep(0.01, 0.0, gx));\n"
-    "  vec3 col = vec3(0.01, 0.025, 0.04) + vec3(0.03, 0.06, 0.05) * land;\n"
-    "  col += vec3(0.22, 0.42, 0.30) * coast + vec3(0.05, 0.10, 0.12) * grid;\n"
-    /* the sweep: a bright edge and a fading wake behind it */
-    "  float behind = mod(u_sweep - lon, 2.0 * PI);\n"
-    "  float wake = exp(-behind * 1.6) * 0.3 + smoothstep(0.05, 0.0, behind) * 0.9;\n"
-    "  col += vec3(0.25, 1.0, 0.55) * wake * (0.35 + 0.65 * cos(lat));\n"
-    /* the data tags, upright to the globe's north */
-    "  vec3 green = vec3(0.45, 1.0, 0.6), red = vec3(1.0, 0.3, 0.2);\n"
-    "  float cw = 0.034, ch = 0.048;\n"
-    "  for (int i = 0; i < 18; i++) {\n"
-    "    vec4 ac = u_ac[i];\n"
-    "    if (ac.w > 1.5 || dot(dir, ac.xyz) < 0.9) continue;\n"
-    "    vec3 e = normalize(cross(vec3(0.0, 1.0, 0.0), ac.xyz) + vec3(1e-5, 0.0, 0.0));\n"
-    "    vec3 n = cross(ac.xyz, e);\n"
-    "    vec2 o = vec2(dot(dir, e), dot(dir, n));\n"
-    "    vec3 tc = ac.w > 0.5 ? (fract(u_t * 2.0) < 0.5 ? red : vec3(1.0, 0.8, 0.3)) : green;\n"
-    "    float lead = step(abs(o.y - o.x * 1.2), 0.003) * step(0.01, o.x) * step(o.x, 0.04);\n"   /* the leader */
-    "    vec2 c = vec2((o.x - 0.044) / cw, (0.145 - o.y) / ch);\n"
-    "    float tx = 0.0;\n"
-    "    if (c.x >= 0.0 && c.x < 7.0 && c.y >= 0.0 && c.y < 2.0)\n"
-    "      tx = textcell(vec2(c.x, c.y + float(i) * 2.0));\n"
-    "    col = mix(col, tc, clamp(tx + lead * 0.8, 0.0, 1.0));\n"
-    "  }\n"
-    "  return vec4(col * u_bright, 1.0);\n"
-    "}\n";
-
-/* airports: lat, lon, code */
-static const struct { float lat, lon; const char *code; } APT[] = {
-    { 51.47f, -0.45f, "LHR" }, { 40.64f, -73.78f, "JFK" }, { 33.94f, -118.41f, "LAX" },
-    { 41.98f, -87.90f, "ORD" }, { 33.64f, -84.43f, "ATL" }, { 49.01f, 2.55f, "CDG" },
-    { 50.03f, 8.57f, "FRA" }, { 52.31f, 4.76f, "AMS" }, { 25.25f, 55.36f, "DXB" },
-    { 1.36f, 103.99f, "SIN" }, { 22.31f, 113.91f, "HKG" }, { 35.77f, 140.39f, "NRT" },
-    { -33.94f, 151.18f, "SYD" }, { -23.43f, -46.47f, "GRU" }, { -26.14f, 28.24f, "JNB" },
-    { 19.09f, 72.87f, "BOM" }, { 28.56f, 77.10f, "DEL" }, { 40.08f, 116.58f, "PEK" },
-    { 43.68f, -79.63f, "YYZ" }, { 19.44f, -99.07f, "MEX" }, { 40.47f, -3.56f, "MAD" },
-    { 41.26f, 28.74f, "IST" }, { 37.62f, -122.38f, "SFO" }, { 61.17f, -149.99f, "ANC" },
-    { -37.01f, 174.79f, "AKL" }, { 30.12f, 31.41f, "CAI" }, { -33.39f, -70.79f, "SCL" },
-    { 63.98f, -22.60f, "KEF" }, { 21.32f, -157.92f, "HNL" }, { 55.97f, 37.41f, "SVO" },
-};
-#define NAPT ((int)(sizeof APT / sizeof APT[0]))
-static const char *AIRLINE[] = { "HEM", "ORB", "GLB", "AZR", "NVA", "KTX", "PLR", "VEC", "MRD", "SKW" };
-
-static struct {
-    float a[3], b[3], om, t, dur, fl, kt;
-    float trail[NTRAIL][3];
-    float paint;                        /* brightness of the last plot */
-    int   ntrail, alert, cruise;
-    char  call[8];
-} g_ac[NAC];
-static float g_sweep, g_atc_t;
-static int   g_alerts;
-static DomePoints g_apt;                /* airports, built once, in the globe's frame */
-
-static void ac_new(int i, int midway)
-{
-    int s, d; float om;
-    do {
-        s = rand() % NAPT; d = rand() % NAPT;
-        float p[3], q[3];
-        ll3(APT[s].lat, APT[s].lon, p); ll3(APT[d].lat, APT[d].lon, q);
-        om = acosf(fmaxf(-1.0f, fminf(1.0f, p[0] * q[0] + p[1] * q[1] + p[2] * q[2])));
-    } while (s == d || om < DEG2RAD(15.0f) || om > DEG2RAD(110.0f));
-    ll3(APT[s].lat, APT[s].lon, g_ac[i].a);
-    ll3(APT[d].lat, APT[d].lon, g_ac[i].b);
-    g_ac[i].om = om;
-    g_ac[i].dur = om * 70.0f;                                  /* a minute or two per flight */
-    g_ac[i].t = midway ? frnd() * g_ac[i].dur : 0.0f;
-    g_ac[i].cruise = 290 + 10 * (rand() % 13);
-    g_ac[i].kt = 440.0f + 50.0f * frnd();
-    g_ac[i].ntrail = 0; g_ac[i].paint = 0; g_ac[i].alert = 0;
-    static int next;
-    next = (next + 3 + rand() % 5) % 10;                       /* a mix of airlines */
-    snprintf(g_ac[i].call, sizeof g_ac[i].call, "%s%d", AIRLINE[next], 10 + (rand() >> 4) % 890);
-}
-
-static void ac_pos(int i, float *out)
-{
-    slerp3(g_ac[i].a, g_ac[i].b, fminf(1.0f, g_ac[i].t / g_ac[i].dur), out);
-}
-
-static void apt_build(void)
-{
-    dome_points_clear(&g_apt);
-    for (int k = 0; k < NAPT; k++) {
-        float c[3];
-        ll3(APT[k].lat, APT[k].lon, c);
-        float e[3] = { c[2], 0.0f, -c[0] }, l = sqrtf(e[0] * e[0] + e[2] * e[2]) + 1e-6f;
-        e[0] /= l; e[2] /= l;
-        float n[3] = { c[1] * e[2] - c[2] * e[1], c[2] * e[0] - c[0] * e[2], c[0] * e[1] - c[1] * e[0] };
-        for (int s2 = -2; s2 <= 2; s2++)                           /* a small square */
-            for (int t = -2; t <= 2; t++) {
-                if (abs(s2) != 2 && abs(t) != 2) continue;
-                float v[3];
-                for (int m = 0; m < 3; m++) v[m] = c[m] + (s2 * e[m] + t * n[m]) * 0.0035f;
-                dome_points_push(&g_apt, v[0], v[1], v[2], 0.55f, 0.75f, 0.95f, 0.9f);
-            }
-        for (int ch = 0; ch < 3; ch++) {                           /* its code, below and right */
-            const unsigned char *gl = FONT5X7[APT[k].code[ch] - 32];
-            for (int row = 0; row < 7; row++)
-                for (int colm = 0; colm < 5; colm++)
-                    if ((gl[row] >> (4 - colm)) & 1) {
-                        float x = 0.014f + (ch * 6 + colm) * 0.0042f, y = -0.012f - row * 0.0042f;
-                        float v[3];
-                        for (int m = 0; m < 3; m++) v[m] = c[m] + x * e[m] + y * n[m];
-                        dome_points_push(&g_apt, v[0], v[1], v[2], 0.5f, 0.7f, 0.9f, 0.75f);
-                    }
-        }
-    }
-    dome_points_upload(&g_apt);
-}
-
-static void atc_reset(void)
-{
-    for (int i = 0; i < NAC; i++) ac_new(i, 1);
-    g_sweep = 0; g_atc_t = 0;
-}
-
-static void atc_update(float dt)
-{
-    float prev = g_sweep;
-    g_sweep = fmodf(g_sweep + dt * 2.0f * DOME_PI / 6.0f, 2.0f * DOME_PI);    /* round once in 6 s */
-    g_atc_t += dt;
-    for (int i = 0; i < NAC; i++) {
-        g_ac[i].t += dt;
-        if (g_ac[i].t > g_ac[i].dur + 4.0f) { ac_new(i, 0); continue; }
-        float f = g_ac[i].t / g_ac[i].dur;
-        float fl = f < 0.12f ? g_ac[i].cruise * f / 0.12f : f > 0.85f ? g_ac[i].cruise * (1.0f - f) / 0.15f : (float)g_ac[i].cruise;
-        g_ac[i].fl = fmaxf(0.0f, fl);
-        g_ac[i].paint = fmaxf(0.0f, g_ac[i].paint - dt / 6.0f);
-        float p[3];
-        ac_pos(i, p);
-        float lon = atan2f(p[0], p[2]);
-        float d0 = fmodf(prev - lon + 4.0f * DOME_PI, 2.0f * DOME_PI), d1 = fmodf(g_sweep - lon + 4.0f * DOME_PI, 2.0f * DOME_PI);
-        if (d1 < d0) {                                             /* the sweep has just passed it */
-            memmove(g_ac[i].trail[1], g_ac[i].trail[0], sizeof(float) * 3 * (NTRAIL - 1));
-            memcpy(g_ac[i].trail[0], p, sizeof p);
-            if (g_ac[i].ntrail < NTRAIL) g_ac[i].ntrail++;
-            g_ac[i].paint = 1.0f;
-        }
-    }
-    g_alerts = 0;                                                  /* too close: under 1.5 degrees and 2000 ft */
-    for (int i = 0; i < NAC; i++) g_ac[i].alert = 0;
-    for (int i = 0; i < NAC; i++)
-        for (int j = i + 1; j < NAC; j++) {
-            float p[3], q[3];
-            ac_pos(i, p); ac_pos(j, q);
-            if (p[0] * q[0] + p[1] * q[1] + p[2] * q[2] > cosf(DEG2RAD(1.5f)) && fabsf(g_ac[i].fl - g_ac[j].fl) < 20.0f
-                && g_ac[i].fl > 50.0f && g_ac[j].fl > 50.0f) {
-                g_ac[i].alert = g_ac[j].alert = 1; g_alerts++;
-            }
-        }
-    /* the tags: two rows of the text grid for each aircraft */
-    memset(g_grid, 0, sizeof g_grid);
-    for (int i = 0; i < NAC; i++) {
-        float f = g_ac[i].t / g_ac[i].dur;
-        char l1[16], l2[16];
-        snprintf(l1, sizeof l1, "%s", g_ac[i].call);
-        char trend = f < 0.12f ? '^' : f > 0.85f ? 'v' : ' ';
-        int kt = (int)(f < 0.12f || f > 0.85f ? g_ac[i].kt * 0.7f : g_ac[i].kt) / 10;
-        snprintf(l2, sizeof l2, "%03d%c%02d", (int)g_ac[i].fl, trend, kt % 100);
-        grid_put(0, i * 2, l1);
-        grid_put(0, i * 2 + 1, l2);
-    }
-    g_grid_dirty = 1;
-}
-
-/* the plots: the newest bright, older ones fading behind */
-static void atc_build(void)
-{
-    dome_points_clear(&g_pts);
-    for (int i = 0; i < NAC; i++) {
-        if (g_ac[i].t > g_ac[i].dur) continue;
-        int al = g_ac[i].alert;
-        for (int k = g_ac[i].ntrail - 1; k >= 0; k--) {
-            float a = k == 0 ? 0.35f + 0.65f * g_ac[i].paint : 0.5f * (1.0f - (float)k / NTRAIL);
-            const float *v = g_ac[i].trail[k];
-            dome_points_push(&g_pts, v[0], v[1], v[2], al ? 1.0f : 0.5f, al ? 0.35f : 1.0f, al ? 0.25f : 0.65f, a);
-        }
-        float p[3];
-        ac_pos(i, p);                                              /* where it is now, faint */
-        dome_points_push(&g_pts, p[0], p[1], p[2], 0.85f, 1.0f, 0.9f, 0.25f + 0.5f * g_ac[i].paint);
-    }
-    dome_points_upload(&g_pts);
-}
-
-static void atc_uniforms(GLuint p)
-{
-    float ac[NAC * 4];
-    for (int i = 0; i < NAC; i++) {
-        float v[3];
-        ac_pos(i, v);
-        ac[i * 4] = v[0]; ac[i * 4 + 1] = v[1]; ac[i * 4 + 2] = v[2];
-        ac[i * 4 + 3] = g_ac[i].t > g_ac[i].dur ? 2.0f : (float)g_ac[i].alert;
-    }
-    glUniform4fv(glGetUniformLocation(p, "u_ac"), NAC, ac);
-    glUniform1f(glGetUniformLocation(p, "u_sweep"), g_sweep);
-}
-
-/* ================================================================ */
-/* 5: ship's terminal                                                 */
+/* 3: ship's terminal                                                 */
 /* ================================================================ */
 /* 36 columns by 26 rows of the text grid, over x -0.66..0.66 and
  * y 0.755..-0.755. Row 0 is a title bar and row 25 a status bar, in
@@ -963,7 +734,7 @@ static void term_update(float dt)
 }
 
 /* ================================================================ */
-/* 6: light grid                                                      */
+/* 4: light grid                                                      */
 /* ================================================================ */
 #define AN 96
 #define NBIKE 4
@@ -1104,7 +875,7 @@ static void bikes_build(void)
 }
 
 /* ================================================================ */
-/* 7: closedown                                                       */
+/* 5: closedown                                                       */
 /* ================================================================ */
 /* u_a = phase: 0 bars, 1 test card, 2 caption, 3 static, 4 collapse,
  * 5 black; u_b = seconds into the phase */
@@ -1195,7 +966,7 @@ static void cd_update(float dt)
 /* ================================================================ */
 /* Scene                                                              */
 /* ================================================================ */
-static const char *GLSL[NSTYLE] = { DEFENCE, NOUGHTS, HUD, TRAFFIC, TERMINAL, LIGHTGRID, CLOSEDOWN };
+static const char *GLSL[NSTYLE] = { DEFENCE, NOUGHTS, HUD, TERMINAL, LIGHTGRID, CLOSEDOWN };
 
 static void restart(int s)
 {
@@ -1203,10 +974,9 @@ static void restart(int s)
     case 0: def_reset(); break;
     case 1: ttt_reset(); break;
     case 2: hud_reset(); break;
-    case 3: atc_reset(); break;
-    case 4: term_reset(); break;
-    case 5: grid_arena_reset(); break;
-    case 6: g_cd_ph = 0; g_cd_t = 0; cd_text(); break;
+    case 3: term_reset(); break;
+    case 4: grid_arena_reset(); break;
+    case 5: g_cd_ph = 0; g_cd_t = 0; cd_text(); break;
     default: break;
     }
     g_txt_key[0] = 0;
@@ -1222,8 +992,6 @@ static void init(void)
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     font_init();
     map_init();
-    dome_points_init(&g_apt, 6000);
-    apt_build();
     g_cells_tex = make_tex(0, 0);
     g_trail_tex = make_tex(1, 0);
     memset(g_owner, -1, sizeof g_owner);
@@ -1239,10 +1007,9 @@ static void update(const DomeFrame *f)
     case 0: def_update(dt); break;
     case 1: ttt_update(dt); break;
     case 2: hud_update(dt); break;
-    case 3: atc_update(dt); break;
-    case 4: term_update(dt); break;
-    case 5: bikes_update(dt); break;
-    case 6: cd_update(dt); break;
+    case 3: term_update(dt); break;
+    case 4: bikes_update(dt); break;
+    case 5: cd_update(dt); break;
     default: break;
     }
 }
@@ -1264,7 +1031,7 @@ static void draw(const DomeFrame *f)
     float tc[3] = { 0.4f, 0.9f, 1.0f };
 
     if (s == 1) ttt_upload();
-    if (s == 5) bikes_upload();
+    if (s == 4) bikes_upload();
     grid_upload();
 
     switch (s) {
@@ -1296,21 +1063,10 @@ static void draw(const DomeFrame *f)
         snprintf(bot, sizeof bot, "MODE: SCAN   THREAT ASSESSMENT ACTIVE");
         tc[0] = 1.0f; tc[1] = 0.25f; tc[2] = 0.2f;
         break;
-    case 3: {
-        time_t now = time(NULL);
-        struct tm *u = gmtime(&now);
-        int n = 0;
-        for (int i = 0; i < NAC; i++) n += g_ac[i].t <= g_ac[i].dur;
-        snprintf(top, sizeof top, "GLOBAL AREA CONTROL");
-        snprintf(bot, sizeof bot, "TRAFFIC %d   ALERTS %d   %02d:%02d UTC", n, g_alerts,
-                 u ? u->tm_hour : 0, u ? u->tm_min : 0);
-        tc[0] = g_alerts ? 1.0f : 0.5f; tc[1] = g_alerts ? 0.55f : 1.0f; tc[2] = g_alerts ? 0.3f : 0.65f;
-        break;
-    }
-    case 4:
+    case 3:
         ub = fmodf(g_t, 1.0f) < 0.55f ? 1.0f : 0.0f;
         break;
-    case 6:
+    case 5:
         ua = (float)g_cd_ph; ub = g_cd_t;
         if (g_cd_ph == 0) snprintf(bot, sizeof bot, "TEST TONE  1 KHZ");
         tc[0] = tc[1] = tc[2] = 0.95f;
@@ -1327,13 +1083,12 @@ static void draw(const DomeFrame *f)
     bind_tex(p, "u_grid", g_grid_tex, 2);
     mat3 globe;
     def_globe(globe);
-    if (s == 3) { bind_tex(p, "u_map", g_map_tex, 3); atc_uniforms(p); }
     if (s == 0) {
         bind_tex(p, "u_map", g_map_tex, 3);
         glUniformMatrix3fv(glGetUniformLocation(p, "u_globe"), 1, GL_FALSE, globe);
     }
     if (s == 1) bind_tex(p, "u_cells", g_cells_tex, 3);
-    if (s == 5) bind_tex(p, "u_trail", g_trail_tex, 3);
+    if (s == 4) bind_tex(p, "u_trail", g_trail_tex, 3);
     if (s == 2) {
         float tg[12];
         for (int i = 0; i < 3; i++) {
@@ -1342,18 +1097,13 @@ static void draw(const DomeFrame *f)
         }
         glUniform4fv(glGetUniformLocation(p, "u_tg"), 3, tg);
     }
-    if (s == 4) glUniform2f(glGetUniformLocation(p, "u_cur"), (float)g_tc, (float)g_trow);
+    if (s == 3) glUniform2f(glGetUniformLocation(p, "u_cur"), (float)g_tc, (float)g_trow);
     glActiveTexture(GL_TEXTURE0);
     dome_surface_end();
 
     mat3 still; m3_identity(still);
     if (s == 0) { def_build(); dome_draw_points(&g_pts, globe, f->fade, 4.5f); }
-    if (s == 3) {
-        dome_draw_points(&g_apt, f->rot, f->fade * 0.8f, 2.2f);
-        atc_build();
-        dome_draw_points(&g_pts, f->rot, f->fade, 6.0f);
-    }
-    if (s == 5) { bikes_build(); dome_draw_points(&g_pts, still, f->fade, 6.0f); }
+    if (s == 4) { bikes_build(); dome_draw_points(&g_pts, still, f->fade, 6.0f); }
     if (L.text > 0.5f && (top[0] || bot[0])) {
         rim_text(top, bot, tc[0], tc[1], tc[2]);
         dome_draw_points(&g_txt, still, f->fade, 2.4f);
