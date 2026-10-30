@@ -23,6 +23,12 @@
  *                     with it and bulging on the beat
  *   9 terrain         a wireframe landscape of spectra scrolling towards
  *                     you below a horizon
+ *  10 bursts          each beat sends a ring of particles out from the
+ *                     middle, slowing and fading
+ *  11 dot globe       a sphere of dots turning with the globe, breathing
+ *                     with the bass, warming with the treble
+ *  12 galaxy          two spiral arms of dots spinning with the tempo, the
+ *                     core glowing with the bass
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -753,6 +759,155 @@ static void horizon_uniforms(GLuint p, const DomeFrame *f)
     set3(p, "u_c0", c);
 }
 
+/* ---- a simple particle in plane units: position, velocity, life ---- */
+typedef struct { float x, y, vx, vy, life, max, hue, size; } Spark;
+#define SPARKS 900
+static Spark g_sp[SPARKS];
+static int   g_sp_next;
+
+static Spark *spark_new(void)
+{
+    Spark *s = &g_sp[g_sp_next];
+    g_sp_next = (g_sp_next + 1) % SPARKS;
+    return s;
+}
+
+/* move every live spark: drag, and a pull (gx, gy) such as gravity */
+static void sparks_move(float dt, float drag, float gx, float gy)
+{
+    float k = expf(-drag * dt);
+    for (int i = 0; i < SPARKS; i++) {
+        Spark *s = &g_sp[i];
+        if (s->life <= 0.0f) continue;
+        s->vx = s->vx * k + gx * dt;
+        s->vy = s->vy * k + gy * dt;
+        s->x += s->vx * dt;
+        s->y += s->vy * dt;
+        s->life -= dt;
+    }
+}
+
+static void sparks_clear(void) { for (int i = 0; i < SPARKS; i++) g_sp[i].life = 0.0f; }
+
+/* ---- 10: particle bursts: each beat sends a ring of particles out from
+ * the middle, slowing and fading; a small puff every few seconds when
+ * idle. Each burst is small and local, so the dome never brightens all
+ * at once. ---- */
+static float g_puff;
+
+static void bursts_burst(int n, float speed, float hue)
+{
+    for (int i = 0; i < n; i++) {
+        Spark *s = spark_new();
+        float a = ((float)i + hash3i(i, (int)(g_t * 10.0f), 5)) / n * 2.0f * DOME_PI;
+        float v = speed * (0.6f + 0.6f * hash3i(i, (int)(g_t * 10.0f), 6));
+        s->x = 0.0f; s->y = 0.0f;
+        s->vx = v * cosf(a); s->vy = v * sinf(a);
+        s->max = s->life = 1.4f + 0.6f * hash3i(i, 7, 7);
+        s->hue = hue + 0.12f * hash3i(i, 8, 8);
+        s->size = hash3i(i, 9, 9);
+    }
+}
+
+static void bursts_update(const DomeFrame *f)
+{
+    if (g_beat_now)
+        bursts_burst(110, (0.8f + 0.5f * f->audio.body * g_gain) * fmaxf(0.3f, L.react),
+                     0.13f * (1.0f + sinf(g_t * 0.2f)) - 0.06f);
+    g_puff += f->dt * L.speed * (1.0f - g_live);
+    if (g_puff > 3.0f) { g_puff = 0.0f; bursts_burst(40, 0.35f, 0.13f * (1.0f + sinf(g_t * 0.2f)) - 0.06f); }
+    sparks_move(f->dt * L.speed, 1.6f, 0.0f, 0.0f);
+}
+
+static void sparks_points(const DomeFrame *f, float s0, float s1, float s2)
+{
+    pool_clear();
+    for (int i = 0; i < SPARKS; i++) {
+        const Spark *s = &g_sp[i];
+        if (s->life <= 0.0f || s->x * s->x + s->y * s->y > 1.2f) continue;
+        float c[3], a = s->life / s->max;
+        theme_rgb(s->hue, c);
+        for (int k = 0; k < 3; k++) c[k] += (1.0f - c[k]) * 0.3f;      /* sparks are light */
+        dot_plane(s->size < 0.6f ? SMALL : s->size < 0.9f ? MID : LARGE, s->x, s->y, c, sqrtf(a));
+    }
+    pool_draw(f, NULL, s0, s1, s2);
+}
+
+static void bursts_points(const DomeFrame *f) { sparks_points(f, 3.0f, 4.5f, 6.5f); }
+
+/* ---- 11: dot globe: a sphere of dots turning with the globe, growing
+ * and shrinking with the bass (by zooming it, so it stays round), its
+ * dots warming with the treble; a slow breath when idle. ---- */
+#define GLOBE_N 1400
+static float g_globe[GLOBE_N][3];
+
+static void globe_build(void)
+{
+    const float ga = DOME_PI * (3.0f - sqrtf(5.0f));        /* the golden angle */
+    for (int i = 0; i < GLOBE_N; i++) {
+        float y = 1.0f - 2.0f * ((float)i + 0.5f) / GLOBE_N, r = sqrtf(1.0f - y * y);
+        g_globe[i][0] = r * cosf(ga * i);
+        g_globe[i][1] = y;
+        g_globe[i][2] = r * sinf(ga * i);
+    }
+}
+
+static void globe_points(const DomeFrame *f)
+{
+    const Audio *a = &f->audio;
+    float zoom = 0.46f + 0.20f * a->bass * g_gain * L.react + 0.06f * g_swell * L.react
+               + (1.0f - g_live) * 0.04f * sinf(g_t * 0.63f);
+    float warm = a->air * g_gain * L.react;
+    pool_clear();
+    for (int i = 0; i < GLOBE_N; i++) {
+        float c[3], w[3];
+        theme_rgb(g_globe[i][1] * 0.25f + g_t * 0.02f, c);
+        theme_rgb(0.0f, w);
+        for (int k = 0; k < 3; k++) c[k] += (w[k] - c[k]) * 0.5f * fminf(warm, 1.0f);
+        dome_points_push(&g_pool[i % 7 == 0 ? MID : SMALL],
+                         g_globe[i][0], g_globe[i][1], g_globe[i][2], c[0], c[1], c[2], 0.9f);
+    }
+    dome_points_zoom(fminf(1.0f, zoom));
+    pool_draw(f, f->rot, 3.5f, 5.0f + 1.5f * fminf(warm, 1.0f), 5.0f);
+    dome_points_zoom(1.0f);
+}
+
+/* ---- 12: galaxy: two spiral arms of dots, the spin following the
+ * tempo, the core glowing brighter with the bass ---- */
+#define GAL_N 3200
+static float g_gal_rot;
+
+static void galaxy_update(const DomeFrame *f)
+{
+    const Audio *a = &f->audio;
+    float bps = a->bpm > 0.0f ? a->bpm / 60.0f : 0.0f;
+    g_gal_rot += f->dt * L.speed * (0.06f * (1.0f - g_live) + g_live * (0.05f + 0.05f * bps));
+}
+
+static void galaxy_uniforms(GLuint p, const DomeFrame *f)
+{
+    glow_set(p, 0.05f, 0.18f + 0.22f * f->audio.bass * g_gain * L.react + 0.08f * g_swell, 7.0f);
+}
+
+static void galaxy_points(const DomeFrame *f)
+{
+    pool_clear();
+    for (int i = 0; i < GAL_N; i++) {
+        float s = hash3i(i, 1, 1);                          /* 0 core .. 1 edge */
+        float arm = (float)(i & 1) * DOME_PI;
+        float r = 0.04f + 0.86f * s;
+        float scatter = (hash3i(i, 2, 2) - 0.5f) * (0.6f + 0.7f * s) * (1.0f - 0.45f * s)
+                      * (0.5f + hash3i(i, 5, 5));
+        float th = arm + s * 4.2f + g_gal_rot + scatter;
+        float c[3];
+        theme_rgb(0.05f + 0.4f * s, c);
+        float a = (0.35f + 0.65f * hash3i(i, 3, 3)) * (1.0f - 0.5f * s);
+        int b = hash3i(i, 4, 4) > 0.93f ? MID : SMALL;
+        dot_plane(b, r * cosf(th), r * sinf(th) * 0.92f, c, a);
+    }
+    pool_draw(f, NULL, 2.0f, 3.5f, 5.0f);
+}
+
 /* ================================================================== */
 /* The table: one row per style, in N order                            */
 /* ================================================================== */
@@ -775,6 +930,9 @@ static const Style STYLES[] = {
     { "lissajous",     GLOW,    NULL,           glow_uniforms,    liss_points },
     { "wire tunnel",   GLOW,    NULL,           glow_uniforms,    tunnel_points },
     { "terrain",       HORIZON, terrain_update, horizon_uniforms, terrain_points },
+    { "bursts",        GLOW,    bursts_update,  glow_uniforms,    bursts_points },
+    { "dot globe",     GLOW,    NULL,           glow_uniforms,    globe_points },
+    { "galaxy",        GLOW,    galaxy_update,  galaxy_uniforms,  galaxy_points },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
@@ -783,7 +941,8 @@ static GLuint g_prog[NSTYLE];
 static Param P[] = {
     { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0,
       "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora, 5 radial bars, "
-      "6 oscilloscope, 7 lissajous, 8 wire tunnel, 9 terrain (N)" },
+      "6 oscilloscope, 7 lissajous, 8 wire tunnel, 9 terrain, 10 bursts, 11 dot globe, "
+      "12 galaxy (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
@@ -811,6 +970,7 @@ static void init(void)
     g_rip_tex = tex_new(RIP_N, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
     g_noise_tex = noise_build();
     for (int b = 0; b < 3; b++) dome_points_init(&g_pool[b], POOL_N);
+    globe_build();
 }
 
 static void update(const DomeFrame *f)
@@ -825,6 +985,8 @@ static void update(const DomeFrame *f)
     g_prev_beat = beat;
     g_t += dt * L.speed;
     g_flow += dt * L.speed * (0.25f + 1.5f * L.react * g_gain * a->bass);
+    static int last = -1;                /* a new style starts with no sparks */
+    if (style() != last) { sparks_clear(); last = style(); }
     const Style *st = &STYLES[style()];
     if (st->update) st->update(f);
 }
