@@ -348,9 +348,11 @@ GLuint dome_compile(const char *vs, const char *fs)
 /* ================================================================== */
 /* Points                                                              */
 /* ================================================================== */
-static GLuint g_point_prog;
+static GLuint g_point_prog, g_point_prog_warp;
 static float  g_ap_dir[3] = { 0, 0, 1 }, g_ap_cos = -2.0f;
 static float  g_zoom = 1.0f;
+static DomeWarp g_warp;
+static int    g_warp_on;
 static int    g_view_w, g_view_h;
 
 void dome_points_init(DomePoints *p, int max)
@@ -423,14 +425,29 @@ void dome_points_zoom(float k)
     g_zoom = k < 0.001f ? 0.001f : k > 1.0f ? 1.0f : k;
 }
 
+void dome_points_warp(const DomeWarp *w)
+{
+    g_warp_on = w != NULL;
+    if (w) g_warp = *w;
+}
+
 #define U(name) glGetUniformLocation(prog, name)
 
 void dome_draw_points(const DomePoints *p, const mat3 rot,
                       float alpha, float dot_size)
 {
     if (p->n == 0) return;
-    GLuint prog = g_point_prog;
+    GLuint prog = g_warp_on ? g_point_prog_warp : g_point_prog;
     glUseProgram(prog);
+    if (g_warp_on) {
+        const DomeWarp *w = &g_warp;
+        glUniform1f(U("u_w_swell"), w->swell);
+        glUniform3fv(U("u_w_org"), 1, w->origin);
+        glUniform4f(U("u_w_rip"), w->ripple, w->ripple_k, w->ripple_t, w->still);
+        glUniform4f(U("u_w_wave"), w->wave_at[0], w->wave[0], w->wave_at[1], w->wave[1]);
+        glUniform2f(U("u_w_ring"), w->ring, w->ring_t);
+        glUniform1fv(U("u_w_band[0]"), 16, w->band);
+    }
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUniformMatrix3fv(U("u_rot"), 1, GL_FALSE, rot);
@@ -1300,6 +1317,14 @@ int dome_run(int argc, char **argv, const char *title,
            g_desktop_gl ? " (desktop fallback)" : "");
 
     g_point_prog = dome_compile(POINT_VS, POINT_FS);
+    {   /* the same with the warp compiled in (dome_points_warp) */
+        static const char def[] = "#define DOME_WARP\n";
+        char *vs = malloc(sizeof def + strlen(POINT_VS));
+        memcpy(vs, def, sizeof def - 1);
+        strcpy(vs + sizeof def - 1, POINT_VS);
+        g_point_prog_warp = dome_compile(vs, POINT_FS);
+        free(vs);
+    }
     surface_init();
     dome_points_init(&g_lens_grid, 40000);
     dome_points_init(&g_globe_grid, 40000);
@@ -1501,6 +1526,7 @@ int dome_run(int argc, char **argv, const char *title,
         float none[3] = { 0, 0, 1 };
         dome_points_aperture(none, -2.0f);
         dome_points_zoom(1.0f);
+        dome_points_warp(NULL);
         mat3 rot;
         if (mode == -2) {
             if (grid_spin) m3_rz(rot, spin); else m3_identity(rot);

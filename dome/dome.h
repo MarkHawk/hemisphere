@@ -111,6 +111,24 @@ void dome_draw_points(const DomePoints *p, const mat3 rot,
  * near 0 = a single dot. Reset to 1 at the start of every frame. */
 void dome_points_zoom(float k);
 
+/* Bend everything drawn with points, for music: small angular nudges to
+ * each dot, done in the vertex shader. All sizes are in radians and every
+ * field at 0 leaves the dots where they are. Pass NULL for none; it is
+ * reset to none at the start of every frame. Draws with a second point
+ * program, so scenes that never warp are untouched. */
+typedef struct {
+    float swell;              /* spread from the dome centre: angle x (1+swell) */
+    float origin[3];          /* model space: where ripples start (unit)  */
+    float ripple, ripple_k;   /* ripple size, and waves per radian         */
+    float ripple_t;           /* ripple phase: increase it to move them out */
+    float still;              /* angle round the origin left still         */
+    float wave_at[2];         /* two waves from the north pole: the angle  */
+    float wave[2];            /*   of each front from the pole, and size   */
+    float ring, ring_t;       /* wobble of each latitude, and its phase    */
+    float band[16];           /* wobble share by latitude, south to north  */
+} DomeWarp;
+void dome_points_warp(const DomeWarp *w);
+
 /* ---- surface ------------------------------------------------------- */
 /* Build a surface program from the scene's GLSL, which must define
  *     vec4 surface(vec3 dir, vec3 view)

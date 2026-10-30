@@ -28,8 +28,53 @@ static const char *POINT_VS =
     "const float HALF_PI = 1.5707963;\n"
     "const float STEP30  = 0.5235988;\n"
     "float lens(float phi){ return atan(sin(phi), cos(phi) + u_offset); }\n"
+    /* Optional warp (dome_points_warp), compiled into a second program
+     * with DOME_WARP defined, so the plain program is exactly as before.
+     * Each dot's direction is nudged by a small angle; its depth is kept,
+     * so recessed dots and the aperture still work. */
+    "#ifdef DOME_WARP\n"
+    "uniform float u_w_swell;\n"     /* spread from the dome centre       */
+    "uniform vec3  u_w_org;\n"       /* model space: where ripples start  */
+    "uniform vec4  u_w_rip;\n"       /* size, waves/radian, phase, still  */
+    "uniform vec4  u_w_wave;\n"      /* front 0, size 0, front 1, size 1  */
+    "uniform vec2  u_w_ring;\n"      /* ring wobble size, phase           */
+    "uniform float u_w_band[16];\n"  /* wobble share, south to north      */
+    "vec3 warp_model(vec3 a){\n"
+    "  float depth = length(a);\n"
+    "  vec3 d = a / depth;\n"
+    /* ripples running out from the origin, still close to it */
+    "  float ca = clamp(dot(d, u_w_org), -1.0, 1.0), ang = acos(ca);\n"
+    "  vec3 t = d - u_w_org * ca;\n"
+    "  float tl = length(t);\n"
+    "  if (tl > 1e-4) d = normalize(d + t / tl * u_w_rip.x * sin(ang * u_w_rip.y - u_w_rip.z)\n"
+    "                    * smoothstep(u_w_rip.w, u_w_rip.w + 0.2, ang) * exp(-ang * 0.6));\n"
+    /* waves rolling from the north pole, and each latitude's own wobble */
+    "  float lat = asin(clamp(d.y, -1.0, 1.0)), co = HALF_PI - lat;\n"
+    "  float dw = u_w_wave.y * exp(-(co - u_w_wave.x) * (co - u_w_wave.x) * 30.0)\n"
+    "           + u_w_wave.w * exp(-(co - u_w_wave.z) * (co - u_w_wave.z) * 30.0);\n"
+    "  int bi = int(clamp((lat + HALF_PI) / 3.1415927 * 16.0, 0.0, 15.0));\n"
+    "  float dr = u_w_ring.x * u_w_band[bi] * sin(4.0 * atan(d.x, d.z) + u_w_ring.y);\n"
+    "  vec3 north = vec3(0.0, 1.0, 0.0) - d * d.y;\n"
+    "  float nl = length(north);\n"
+    "  if (nl > 1e-4) d = normalize(d + north / nl * (dr - dw));\n"
+    "  return d * depth;\n"
+    "}\n"
+    /* the swell: every dot's angle from the dome centre grows a little */
+    "vec3 warp_dome(vec3 p){\n"
+    "  float depth = length(p);\n"
+    "  vec3 q = p / depth;\n"
+    "  float s = length(q.xy);\n"
+    "  if (s < 1e-5) return p;\n"
+    "  float phi = min(atan(s, q.z) * (1.0 + u_w_swell), 3.14);\n"
+    "  return vec3(q.xy / s * sin(phi), cos(phi)) * depth;\n"
+    "}\n"
+    "#endif\n"
     "void main(){\n"
+    "#ifdef DOME_WARP\n"
+    "  vec3  p     = warp_dome(u_rot * warp_model(a_pos));\n"
+    "#else\n"
     "  vec3  p     = u_rot * a_pos;\n"
+    "#endif\n"
     "  float depth = length(p);\n"
     "  vec3  q     = p / depth;\n"
     "  float phi_s = acos(clamp(q.z, -1.0, 1.0));\n"
