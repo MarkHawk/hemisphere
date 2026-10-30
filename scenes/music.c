@@ -40,6 +40,8 @@
  *  18 colour tunnel   flying down a tunnel of colour on the bass
  *  19 liquid light    five soft blobs of coloured oil, mixing where they
  *                     meet, moving with the snare body
+ *  20 fire ring       flames rising from the rim, each part burning with
+ *                     its own band, flaring with the bass, sparks on beats
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -1200,6 +1202,109 @@ static void liquid_uniforms(GLuint p, const DomeFrame *f)
     set1(p, "u_k0", 13.0f - 5.0f * fminf(1.0f, a->bass * g_gain * L.react));
 }
 
+/* ---- 20: fire ring: flames rising from the rim towards the middle.
+ * Each part of the ring burns at its own band's height (bass at the
+ * bottom, mirrored), read with linear filtering so the tongues blend.
+ * Two noise lookups scroll inwards and lick sideways; the colour is a
+ * temperature ramp, deep red to orange to yellow to near white, with
+ * faint smoke above the tips and embers glowing along the rim. The bass
+ * flares the whole ring higher, eased; beats throw sparks (dots). Fire
+ * keeps its own colours, whatever the theme: the ramp is baked into a
+ * 256x1 texture (u_tex). u_k0 is the base height, u_k1 how far the music
+ * lifts it. ---- */
+static const char FIRE[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  vec2 p = plane(view);\n"
+    "  float u = 1.0 - length(p);\n"                       /* 0 at the rim, 1 in the middle */
+    "  float b = abs(fatan2(p.x, -p.y)) / PI;\n"           /* 0 bottom .. 1 top */
+    "  float v = texture2D(u_spec, vec2(0.5 / 16.0 + b * 15.0 / 16.0, 0.5)).r;\n"
+    "  float H = u_k0 + u_k1 * sqrt(min(v * u_react, 1.0));\n"
+    /* tongue heights along the ring, changing slowly; rising turbulence
+     * stretched along the flame bends the edges, more towards the tips */
+    "  float tongue = noise(vec2(b * 9.0, u_t * 0.25));\n"
+    "  float turb = noise(vec2(b * 6.0, u * 1.1 - u_t * 0.7));\n"
+    "  float fine = noise(vec2(b * 14.0 + turb, u * 3.0 - u_t * 1.4));\n"
+    "  float h = H * (0.55 + 0.9 * tongue);\n"
+    "  float uu = u + ((turb - 0.5) * 0.22 + (fine - 0.5) * 0.07) * min(u / max(h, 0.05), 1.2);\n"
+    "  float k = (h - uu) / max(h, 0.02);\n"               /* 1 base, 0 tip, below 0 above it */
+    "  float T = clamp(k, 0.0, 1.0);\n"
+    "  T = T * (0.55 + 0.45 * T) * (0.8 + 0.3 * fine);\n"
+    "  vec3 col = texture2D(u_tex, vec2(T, 0.5)).rgb * clamp(k * 10.0, 0.0, 1.0);\n"
+    "  float n2 = fine;\n"
+    "  float smoke = clamp(-k * 8.0, 0.0, 1.0) * clamp((0.7 + k) * 2.0, 0.0, 1.0) * n2 * clamp((0.85 - u) * 3.3, 0.0, 1.0);\n"
+    "  col += vec3(0.09, 0.085, 0.08) * smoke * 0.9;\n"
+    "  float ember = clamp(1.0 - u * 16.0, 0.0, 1.0) * (0.25 + 0.5 * tongue);\n"
+    "  col += vec3(0.9, 0.25, 0.04) * ember;\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+static float  g_fire_spark;
+static GLuint g_fire_tex;
+
+/* temperature 0..1 to colour: deep red, orange, yellow, near white */
+static GLuint fire_ramp(void)
+{
+    static const float KEY[5][4] = {             /* T, r, g, b */
+        { 0.00f, 0.00f, 0.00f, 0.00f }, { 0.22f, 0.55f, 0.06f, 0.02f },
+        { 0.50f, 1.00f, 0.32f, 0.04f }, { 0.75f, 1.00f, 0.68f, 0.18f },
+        { 1.00f, 1.00f, 0.95f, 0.75f },
+    };
+    unsigned char px[256 * 3];
+    for (int i = 0; i < 256; i++) {
+        float t = (float)i / 255.0f;
+        int k = 0;
+        while (k < 3 && t > KEY[k + 1][0]) k++;
+        float e = smooth01(KEY[k][0], KEY[k + 1][0], t);
+        for (int c = 0; c < 3; c++)
+            px[i * 3 + c] = (unsigned char)lroundf((KEY[k][c + 1] + (KEY[k + 1][c + 1] - KEY[k][c + 1]) * e) * 255.0f);
+    }
+    return tex_new(256, 1, GL_RGB, GL_CLAMP_TO_EDGE, px);
+}
+
+static void fire_update(const DomeFrame *f)
+{
+    float dt = f->dt * L.speed;
+    /* beats throw a handful of sparks; a few drift up all the time */
+    int n = g_beat_now ? 26 : 0;
+    g_fire_spark += dt * 2.0f;
+    if (g_fire_spark > 1.0f) { g_fire_spark -= 1.0f; n += 1; }
+    for (int i = 0; i < n; i++) {
+        Spark *s = spark_new();
+        int seed = (int)(g_t * 977.0f) + i * 31;
+        float a = hash3i(seed, 1, 11) * 2.0f * DOME_PI, r = 0.96f;
+        float v = 0.22f + 0.25f * hash3i(seed, 2, 11);
+        s->x = r * cosf(a); s->y = r * sinf(a);
+        s->vx = -v * cosf(a) + (hash3i(seed, 3, 11) - 0.5f) * 0.15f;
+        s->vy = -v * sinf(a) + (hash3i(seed, 4, 11) - 0.5f) * 0.15f;
+        s->max = s->life = 0.9f + 0.7f * hash3i(seed, 5, 11);
+        s->size = hash3i(seed, 6, 11);
+    }
+    sparks_move(dt, 0.7f, 0.0f, 0.0f);
+}
+
+static void fire_uniforms(GLuint p, const DomeFrame *f)
+{
+    float bass = fminf(1.0f, f->audio.bass * g_gain * L.react);
+    set1(p, "u_k0", 0.09f);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, g_fire_tex);
+    set1(p, "u_k1", 0.48f * (1.0f + 0.55f * bass));
+}
+
+static void fire_points(const DomeFrame *f)
+{
+    pool_clear();
+    for (int i = 0; i < SPARKS; i++) {
+        const Spark *s = &g_sp[i];
+        if (s->life <= 0.0f) continue;
+        float a = s->life / s->max;
+        float c[3] = { 1.0f, 0.5f + 0.4f * a, 0.12f + 0.2f * a };
+        line_plane(SMALL, s->x, s->y, s->x - s->vx * 0.06f, s->y - s->vy * 0.06f, c, 0.5f * a);
+        dot_plane(s->size < 0.8f ? SMALL : MID, s->x, s->y, c, a);
+    }
+    pool_draw(f, NULL, 2.0f, 3.0f, 4.0f);
+}
+
 /* ================================================================== */
 /* The table: one row per style, in N order                            */
 /* ================================================================== */
@@ -1232,6 +1337,7 @@ static const Style STYLES[] = {
     { "kaleidoscope",  KALEIDO, NULL,           kaleido_uniforms, NULL },
     { "colour tunnel", TUNNEL,  NULL,           tunnel_uniforms,  NULL },
     { "liquid light",  LIQUID,  NULL,           liquid_uniforms,  NULL },
+    { "fire ring",     FIRE,    fire_update,    fire_uniforms,    fire_points },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
@@ -1242,7 +1348,7 @@ static Param P[] = {
       "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora, 5 radial bars, "
       "6 oscilloscope, 7 lissajous, 8 wire tunnel, 9 terrain, 10 bursts, 11 dot globe, "
       "12 galaxy, 13 rain, 14 fireworks, 15 8-bit spectrum, 16 bass plasma, "
-      "17 kaleidoscope, 18 colour tunnel, 19 liquid light (N)" },
+      "17 kaleidoscope, 18 colour tunnel, 19 liquid light, 20 fire ring (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
@@ -1270,6 +1376,7 @@ static void init(void)
     g_rip_tex = tex_new(RIP_N, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
     g_noise_tex = noise_build();
     g_chunk_tex = tex_new(2 * CHUNKY_N, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
+    g_fire_tex = fire_ramp();
     for (int b = 0; b < 3; b++) dome_points_init(&g_pool[b], POOL_N);
     globe_build();
 }
