@@ -520,7 +520,8 @@ shared colour themes), `bright`. The spectrum ring stands 16 bars in from
 the rim, bass at the bottom and treble at the top. The pulse globe swells
 with the bass and the beat and its halo follows the treble. In ripples,
 each snare hit sends a ring out from the middle. The starfield speeds up
-with the bass and stretches into streaks. The aurora's curtains sway in
+with the bass and stretches into streaks (its stars are dots in soft
+fixed tints; the theme colours the glow behind them). The aurora's curtains sway in
 time with the music, further when the snare is loud. The planet's city
 lights and atmosphere breathe with the overall level. With no music every
 style idles slowly, and the change between the two is eased over about a
