@@ -33,6 +33,10 @@
  *                     splashing at the bottom rim
  *  14 fireworks       beats launch shells that burst into drifting
  *                     sparks
+ *  15 8-bit spectrum  chunky LED columns with peak caps that drop slowly
+ *  16 bass plasma     a flowing colour field, faster with the bass
+ *  17 kaleidoscope    six mirrored folds turning slowly, the zoom
+ *                     breathing on the beat
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -1039,6 +1043,97 @@ static void night_uniforms(GLuint p, const DomeFrame *f)
     glow_set(p, 0.6f, 0.05f, 3.0f);                  /* a faint sky glow */
 }
 
+/* ---- 15: 8-bit spectrum: chunky LED columns, 16 bands of 16 blocks,
+ * with peak caps that hold and then drop slowly. u_tex holds the 16
+ * column heights then the 16 peaks, 0..1, worked out on the CPU. ---- */
+static const char CHUNKY[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  vec2 p = plane(view);\n"
+    "  vec2 g = vec2((p.x + 0.85) / 1.7, (p.y + 0.72) / 1.44) * 16.0;\n"
+    "  vec2 cell = floor(g), f = fract(g);\n"
+    "  float inside = step(0.0, cell.x) * step(cell.x, 15.0) * step(0.0, cell.y) * step(cell.y, 15.0);\n"
+    "  float h = texture2D(u_tex, vec2((cell.x + 0.5) / 32.0, 0.5)).r * 16.0;\n"
+    "  float pk = texture2D(u_tex, vec2((cell.x + 16.5) / 32.0, 0.5)).r * 16.0;\n"
+    "  float lit = step(cell.y + 0.5, h);\n"
+    "  float cap = (1.0 - lit) * step(abs(cell.y - floor(pk)), 0.5) * step(0.6, pk);\n"
+    "  float block = step(0.12, f.x) * step(f.x, 0.88) * step(0.14, f.y) * step(f.y, 0.86);\n"
+    "  vec3 c = theme(u_theme, cell.y / 16.0 * 0.45);\n"
+    "  vec3 col = (c * (0.07 + 0.93 * lit) + vec3(0.9) * cap) * block * inside;\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+#define CHUNKY_N 16
+static float  g_chunk[2 * CHUNKY_N], g_chunk_hold[CHUNKY_N];
+static GLuint g_chunk_tex;
+
+static void chunky_update(const DomeFrame *f)
+{
+    float dt = f->dt * L.speed;
+    for (int i = 0; i < CHUNKY_N; i++) {
+        float idle = 0.18f + 0.10f * sinf((float)i * 0.7f - g_t * 1.2f);
+        float h = fmaxf(band_lift(f, i), idle * (1.0f - g_live));
+        g_chunk[i] = h;
+        float *pk = &g_chunk[CHUNKY_N + i];
+        if (h >= *pk) { *pk = h; g_chunk_hold[i] = 0.6f; }
+        else if ((g_chunk_hold[i] -= dt) < 0.0f) *pk = fmaxf(h, *pk - 0.5f * dt);
+    }
+}
+
+static void chunky_uniforms(GLuint p, const DomeFrame *f)
+{
+    (void)p; (void)f;
+    glActiveTexture(GL_TEXTURE3);
+    tex_row(g_chunk_tex, g_chunk, 2 * CHUNKY_N);
+}
+
+/* ---- 16: bass plasma: four sines, flowing on the bass clock; the snare
+ * body widens the colour bands. Sound moves the brightness 15% at most. */
+static const char PLASMA[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  vec2 p = plane(view) * 2.6;\n"
+    "  float t = u_flow * 1.6;\n"
+    "  float v = sin(p.x * 3.0 + t) + sin(p.y * 4.0 - t * 1.3) + sin((p.x + p.y) * 2.5 + t * 0.7)\n"
+    "          + sin(length(p - u_c1.xy) * 4.0);\n"
+    "  vec3 c = theme(u_theme, v * (0.16 + 0.10 * u_body * u_react) + u_t * 0.05);\n"
+    "  return vec4(c * (0.85 + 0.15 * min(u_level * u_react, 1.0)) * u_bright, 1.0);\n"
+    "}\n";
+
+static void plasma_uniforms(GLuint p, const DomeFrame *f)
+{
+    (void)f;
+    float c[3] = { 1.5f * sinf(g_t * 0.3f), 1.5f * cosf(g_t * 0.4f), 0.0f };   /* a wandering centre */
+    set3(p, "u_c1", c);
+}
+
+/* ---- 17: kaleidoscope: six mirrored folds of the noise, turning slowly
+ * (faster with the snare body), the zoom breathing with the eased beat.
+ * u_k0 is the zoom, u_k1 the turn, u_c1 the drift through the noise. */
+static const char KALEIDO[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  vec2 p = plane(view);\n"
+    "  float r = length(p);\n"
+    "  float a = fatan2(p.y, p.x) + u_k1;\n"
+    "  const float SEG = 1.0471976;\n"                     /* six folds */
+    "  a = mod(a, SEG);\n"
+    "  a = abs(a - SEG * 0.5);\n"
+    "  vec2 q = r * vec2(cos(a), sin(a)) * u_k0 + u_c1.xy;\n"
+    "  float n = noise(q) * 0.75 + noise(q * 1.9 + 0.3) * 0.25;\n"
+    "  vec3 c = theme(u_theme, n * 2.4 + u_t * 0.03);\n"
+    "  float edge = smoothstep(1.02, 0.9, r);\n"
+    "  return vec4(c * (0.3 + 0.7 * smoothstep(0.3, 0.7, n)) * edge * u_bright, 1.0);\n"
+    "}\n";
+
+static float g_kal_turn;
+
+static void kaleido_uniforms(GLuint p, const DomeFrame *f)
+{
+    g_kal_turn += f->dt * L.speed * (0.05f + 0.15f * f->audio.body * g_gain * L.react);
+    set1(p, "u_k0", 0.38f * (1.0f + 0.22f * g_swell * L.react));
+    set1(p, "u_k1", g_kal_turn);
+    float d[3] = { g_t * 0.02f, g_t * 0.013f, 0.0f };
+    set3(p, "u_c1", d);
+}
+
 /* ================================================================== */
 /* The table: one row per style, in N order                            */
 /* ================================================================== */
@@ -1066,6 +1161,9 @@ static const Style STYLES[] = {
     { "galaxy",        GLOW,    galaxy_update,  galaxy_uniforms,  galaxy_points },
     { "rain",          GLOW,    rain_update,    night_uniforms,   rain_points },
     { "fireworks",     GLOW,    fireworks_update, night_uniforms, fireworks_points },
+    { "8-bit spectrum", CHUNKY, chunky_update,  chunky_uniforms,  NULL },
+    { "bass plasma",   PLASMA,  NULL,           plasma_uniforms,  NULL },
+    { "kaleidoscope",  KALEIDO, NULL,           kaleido_uniforms, NULL },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
@@ -1075,7 +1173,8 @@ static Param P[] = {
     { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0,
       "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora, 5 radial bars, "
       "6 oscilloscope, 7 lissajous, 8 wire tunnel, 9 terrain, 10 bursts, 11 dot globe, "
-      "12 galaxy, 13 rain, 14 fireworks (N)" },
+      "12 galaxy, 13 rain, 14 fireworks, 15 8-bit spectrum, 16 bass plasma, "
+      "17 kaleidoscope (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
@@ -1102,6 +1201,7 @@ static void init(void)
     g_spec_tex = tex_new(AUDIO_BANDS, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
     g_rip_tex = tex_new(RIP_N, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
     g_noise_tex = noise_build();
+    g_chunk_tex = tex_new(2 * CHUNKY_N, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
     for (int b = 0; b < 3; b++) dome_points_init(&g_pool[b], POOL_N);
     globe_build();
 }
