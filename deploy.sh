@@ -22,5 +22,11 @@ for f in calibration.cfg deathstar.cfg; do
     if [ -f "$f" ] && ! ssh "$PI" "test -f $DEST/$f"; then scp "$f" "$PI:$DEST/"; fi
 done
 
-ssh "$PI" "cd $DEST && make && (pkill -x hemisphere || true)"
-echo "Built. Start it on the Pi with:  cd $DEST && DISPLAY=:0 ./hemisphere"
+# an empty object file or program is left behind if the Pi lost power
+# mid-build, and make would take it as up to date: remove it first
+ssh "$PI" "cd $DEST && find . dome scenes -maxdepth 1 -type f -size 0 \\( -name '*.o' -o -name hemisphere \\) -print -delete"
+ssh "$PI" "cd $DEST && make"
+# start it again the way the desktop's autostart does, detached so it
+# keeps running after this SSH session ends; it logs to $DEST/hemisphere.log
+ssh "$PI" "bash $DEST/tools/start-hemisphere.sh --detach"
+echo "Built and started. Log on the Pi: $DEST/hemisphere.log"
