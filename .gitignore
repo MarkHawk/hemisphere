@@ -42,3 +42,8 @@ playlist.json
 /hemisphere.exe
 /SDL2.dll
 logs/
+
+# Hemisphere run log and launcher state on the Pi
+hemisphere.log*
+.hemisphere.lock
+.hemisphere.pid
