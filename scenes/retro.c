@@ -4,22 +4,20 @@
  *   0 digital rain    green character columns pouring down
  *   1 copper bars     rolling colour bars with a sine-wave text scroller
  *   2 rotozoomer      a made-up pixel tile turning and zooming, colours cycling
- *   3 lunar lander    a robot flies a lander down to the pads over jagged
- *                     ground: fuel, bonus pads, crashes, levels
- *   4 maze chase      a robot clears a maze of dots, chased by four spiky
+ *   3 maze chase      a robot clears a maze of dots, chased by four spiky
  *                     chasers; it stays in the middle and the maze slides round it
- *   5 rim defender    a ship circling the rim, aliens spiralling out and firing back
- *   6 asteroids       asteroids on a globe: the whole sphere is the playfield
- *   7 16-colour plasma  the demo-scene favourite in a fixed palette
- *   8 tape loading    a home-computer screen loading off tape: pilot tone and
+ *   4 rim defender    a ship circling the rim, aliens spiralling out and firing back
+ *   5 asteroids       asteroids on a globe: the whole sphere is the playfield
+ *   6 16-colour plasma  the demo-scene favourite in a fixed palette
+ *   7 tape loading    a home-computer screen loading off tape: pilot tone and
  *                     data stripes in the border, the picture arriving in thirds,
  *                     the colours last, with real attribute clash. A different
  *                     picture each time: built-in people and places, or your
  *                     own photos from the tapes folder
- *   9 pixel fire      the classic demo fire effect
+ *   8 pixel fire      the classic demo fire effect
  *
  * All of them face you except asteroids, which follows the ship round the
- * globe. The four games are full games (levels, lives, score, high score), each played by
+ * globe. The three games are full games (levels, lives, score, high score), each played by
  * a small robot. scale sets the size of the pixels. The aliens and every picture
  * here are made up for this program; none is copied from a real game.
  */
@@ -32,18 +30,18 @@
 #include "../third_party/stb_image.h"    /* the code itself is in planet.c */
 #include "../dome/font5x7.h"
 
-#define NSTYLE 10
+#define NSTYLE 9
 static const char *NAMES[NSTYLE] = {
-    "digital rain", "copper bars", "rotozoomer", "lunar lander", "maze chase",
+    "digital rain", "copper bars", "rotozoomer", "maze chase",
     "rim defender", "asteroids", "16-colour plasma", "tape loading", "pixel fire"
 };
 
 static struct { float style, speed, scale, bright, grid; } L = { 0.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 
 static Param P[] = {
-    { "style",  &L.style,  1.0f, 0.0f, 9.0f, 0,
-      "0 digital rain, 1 copper bars, 2 rotozoomer, 3 lunar lander, 4 maze chase, 5 rim defender, "
-      "6 asteroids, 7 plasma, 8 tape loading, 9 pixel fire (N)" },
+    { "style",  &L.style,  1.0f, 0.0f, 8.0f, 0,
+      "0 digital rain, 1 copper bars, 2 rotozoomer, 3 maze chase, 4 rim defender, "
+      "5 asteroids, 6 plasma, 7 tape loading, 8 pixel fire (N)" },
     { "speed",  &L.speed,  0.1f, 0.0f, 4.0f, 0, "speed of the animation" },
     { "scale",  &L.scale,  0.05f, 0.4f, 2.5f, 0, "pixel size (bigger = smaller pixels)" },
     { "bright", &L.bright, 0.05f, 0.2f, 2.0f, 0, "brightness" },
@@ -143,80 +141,7 @@ static const char ROTO[] =
     "  return vec4(c * gaps(p) * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 3: lunar lander. Terrain heights in u_ter (R height, G landing pad
- * bonus / 10, B the nearest pad's middle, A 1 - its bonus / 10 where its
- * label goes), u_ship = x, y, angle, flame;
- * u_g.x = 1 while the wreck burns, u_g.y = 1 on a landing (lights) ---- */
-static const char LANDER[] =
-    "uniform sampler2D u_ter;\n"
-    "uniform vec4 u_ship;\n"
-    "float dig(float n, vec2 c){\n"                                 /* 3x5 digits 2-5 and an x */
-    "  if (c.x < 0.0 || c.y < 0.0 || c.x > 2.5 || c.y > 4.5) return 0.0;\n"
-    "  vec2 f = floor(c);\n"
-    "  float rows[5];\n"
-    "  if (n < 1.5) { rows[0]=0.0; rows[1]=5.0; rows[2]=2.0; rows[3]=5.0; rows[4]=0.0; }\n"     /* x */
-    "  else if (n < 2.5) { rows[0]=7.0; rows[1]=1.0; rows[2]=7.0; rows[3]=4.0; rows[4]=7.0; }\n"
-    "  else if (n < 3.5) { rows[0]=7.0; rows[1]=1.0; rows[2]=3.0; rows[3]=1.0; rows[4]=7.0; }\n"
-    "  else if (n < 4.5) { rows[0]=5.0; rows[1]=5.0; rows[2]=7.0; rows[3]=1.0; rows[4]=1.0; }\n"
-    "  else { rows[0]=7.0; rows[1]=4.0; rows[2]=7.0; rows[3]=1.0; rows[4]=7.0; }\n"
-    "  float r = f.y < 0.5 ? rows[0] : f.y < 1.5 ? rows[1] : f.y < 2.5 ? rows[2] : f.y < 3.5 ? rows[3] : rows[4];\n"
-    "  return mod(floor(r / pow(2.0, 2.0 - f.x)), 2.0);\n"
-    "}\n"
-    "vec4 surface(vec3 dir, vec3 view){\n"
-    "  vec2 p = plane(view), q = pix(p);\n"
-    "  float n = NP();\n"
-    "  vec2 g = floor(p * n);\n"
-    /* the sky: stars and a small blue planet */
-    "  vec3 c = vec3(0.0);\n"
-    "  if (h3(vec3(g, 5.0)) > 0.985) c = vec3(0.55, 0.55, 0.7) + 0.3 * step(0.5, fract(u_t * 0.7 + h3(vec3(g, 6.0))));\n"
-    "  vec2 ep = q - vec2(-0.32, 0.42);\n"
-    "  if (length(ep) < 0.11) {\n"
-    "    float land = step(0.3, sin(ep.x * 40.0 + 1.0) + sin(ep.y * 33.0 - ep.x * 20.0));\n"
-    "    c = mix(vec3(0.15, 0.35, 0.9), vec3(0.25, 0.75, 0.3), land);\n"
-    "    if (ep.x + ep.y * 0.4 > 0.04) c *= 0.35;\n"                 /* the planet's night side */
-    "  }\n"
-    /* the ground */
-    "  vec4 tr = texture2D(u_ter, vec2(clamp(q.x * 0.5 + 0.5, 0.0, 1.0), 0.5));\n"
-    "  float h = mix(-0.98, 0.05, tr.r);\n"
-    "  float hp = (floor(h * n) + 0.5) / n;\n"
-    "  if (q.y <= hp) {\n"
-    "    float depth = (hp - q.y) * n;\n"
-    "    float cr = h3(vec3(floor(g / 3.0), 9.0));\n"
-    "    c = depth < 1.0 ? vec3(0.85, 0.85, 0.8) : mix(vec3(0.42, 0.40, 0.42), vec3(0.28, 0.26, 0.30), step(0.6, cr));\n"
-    "    if (depth > 1.0 && h3(vec3(g, 3.0)) > 0.93) c = vec3(0.55, 0.53, 0.55);\n"
-    "    if (tr.g > 0.05) {\n"                                         /* a landing pad, and its bonus */
-    "      if (depth < 1.0) c = mod(g.x + floor(u_t * 4.0), 2.0) < 1.0 || u_g.y > 0.5 ? vec3(1.0, 0.95, 0.3) : vec3(0.95, 0.4, 0.1);\n"
-    "    }\n"
-    "    if (tr.a < 0.99 && depth > 1.0) {\n"                         /* the pad's bonus, written below it */
-    "      float mid = floor((tr.b * 2.0 - 1.0) * n);\n"
-    "      float ph = mix(-0.98, 0.05, texture2D(u_ter, vec2(tr.b, 0.5)).r);\n"
-    "      vec2 lc = vec2(g.x - (mid - 3.0), floor(ph * n) - 2.0 - g.y);\n"
-    "      float lit = dig(1.0, lc) + dig(floor((1.0 - tr.a) * 10.0 + 0.5), lc - vec2(4.0, 0.0));\n"
-    "      if (lit > 0.5) c = vec3(1.0);\n"
-    "    }\n"
-    "  }\n"
-    /* the lander, a chunky sprite turned to its angle */
-    "  vec2 d = q - u_ship.xy;\n"
-    "  float ca = cos(u_ship.z), sa = sin(u_ship.z);\n"
-    "  vec2 l = vec2(ca * d.x + sa * d.y, -sa * d.x + ca * d.y) / 0.055;\n"
-    "  if (u_g.x < 0.5 && dot(l, l) < 4.0) {\n"
-    "    vec3 sc = vec3(0.0); float on = 0.0;\n"
-    "    if (length(l - vec2(0.0, 0.42)) < 0.42) { on = 1.0; sc = vec3(0.85, 0.85, 0.9); }\n"           /* the cabin */
-    "    if (length(l - vec2(0.12, 0.5)) < 0.15) sc = vec3(0.2, 0.6, 1.0);\n"                           /* its window */
-    "    if (abs(l.x) < 0.55 && l.y > -0.25 && l.y < 0.05) { on = 1.0; sc = vec3(0.95, 0.75, 0.15); }\n" /* the stage */
-    "    float leg = abs(abs(l.x) - 0.45 - (-0.2 - l.y) * 0.45);\n"
-    "    if (l.y < -0.15 && l.y > -0.72 && leg < 0.1) { on = 1.0; sc = vec3(0.7, 0.7, 0.75); }\n"       /* legs */
-    "    if (l.y < -0.66 && l.y > -0.8 && abs(abs(l.x) - 0.7) < 0.16) { on = 1.0; sc = vec3(0.7, 0.7, 0.75); }\n"
-    "    float fl = u_ship.w * (0.9 + 0.3 * h3(vec3(floor(u_t * 20.0), 1.0, 1.0)));\n"
-    "    if (fl > 0.05 && l.y < -0.25 && l.y > -0.25 - 1.3 * fl && abs(l.x) < 0.22 * (1.0 + (l.y + 0.25) / (1.3 * fl))) {\n"
-    "      on = 1.0; sc = (-0.25 - l.y) / (1.3 * fl) < 0.45 ? vec3(1.0, 1.0, 0.6) : vec3(1.0, 0.45, 0.1);\n"
-    "    }\n"
-    "    if (on > 0.5) c = sc;\n"
-    "  }\n"
-    "  return vec4(c * gaps(p) * u_bright, 1.0);\n"
-    "}\n";
-
-/* ---- 4: maze chase. The robot is always in the middle; u_hero = robot
+/* ---- 3: maze chase. The robot is always in the middle; u_hero = robot
  * (maze x, y, facing, mouth/anim), u_c0..3 chasers (x, y, facing, look:
  * 0 normal, 1 blue, 2 blue flashing white, 3 eyes only, 4 hidden),
  * u_fruit (x, y, kind, on), u_mz (tiles from the middle to the rim,
@@ -320,7 +245,7 @@ static const char MAZE[] =
     "  return vec4(c * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 5: rim defender background (the ship, aliens and shots are dots) ---- */
+/* ---- 4: rim defender background (the ship, aliens and shots are dots) ---- */
 static const char ALIENS[] =
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec2 p = view.xy, pp = pix(p);\n"
@@ -334,7 +259,7 @@ static const char ALIENS[] =
     "  return vec4(c * gaps(p) * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 6: asteroids: stars fixed to the globe and a faint grid, so you
+/* ---- 5: asteroids: stars fixed to the globe and a faint grid, so you
  * can see it turn as the view follows the ship. u_g.y = flash ---- */
 static const char ASTRO[] =
     "vec4 surface(vec3 dir, vec3 view){\n"
@@ -349,7 +274,7 @@ static const char ASTRO[] =
     "  return vec4(c * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 7: 16-colour plasma ---- */
+/* ---- 6: 16-colour plasma ---- */
 static const char PLASMA16[] =
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec2 p = plane(view), q = pix(p);\n"
@@ -359,7 +284,7 @@ static const char PLASMA16[] =
     "  return vec4(c * gaps(p) * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 8: tape loading. The screen is drawn on the CPU (see "the tape
+/* ---- 7: tape loading. The screen is drawn on the CPU (see "the tape
  * loader" below) into u_scr; the border stripes are drawn here.
  * u_tb.x = 0 plain border, 1 pilot tone, 2 data; u_tb.y = stripe phase;
  * u_bc = the plain border colour ---- */
@@ -385,7 +310,7 @@ static const char TAPE[] =
     "  return vec4(c * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 9: pixel fire ---- */
+/* ---- 8: pixel fire ---- */
 static const char FIRE[] =
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec2 p = plane(view), q = pix(p);\n"
@@ -402,7 +327,7 @@ static const char FIRE[] =
     "}\n";
 
 static const char *GLSL[NSTYLE] = {
-    RAIN, COPPER, ROTO, LANDER, MAZE, ALIENS, ASTRO, PLASMA16, TAPE, FIRE
+    RAIN, COPPER, ROTO, MAZE, ALIENS, ASTRO, PLASMA16, TAPE, FIRE
 };
 static GLuint g_prog[NSTYLE];
 static float  g_t;
@@ -728,236 +653,6 @@ static void hud(int score, int lives, const char *what, int n, int hi, const cha
     dome_text_arc(&g_pix, buf, HR, 90.0f, HH, 0.8f, 0.8f, 0.9f, 0.8f);
     if (banner > 0 && msg[0])
         dome_text_arc(&g_pix, msg, 30.0f, 90.0f, 7.0f, mcol[0], mcol[1], mcol[2], fminf(1.0f, banner * 2.0f));
-}
-
-/* ---------------------------------------------------------------- */
-/* Lunar lander: a robot flies a lander down onto jagged ground. The  */
-/* pads pay a bonus (x2 wide, x3, x5 narrow); fuel left over scores   */
-/* too. Touch down too fast, tilted or off a pad and it is a crash.   */
-/* Each landing is a new level: new ground, more gravity, less fuel.  */
-/* The ground and the lander are drawn by the shader (u_ter, u_ship); */
-/* the sparks and the score are dots.                                 */
-/* ---------------------------------------------------------------- */
-#define LN 128                          /* ground columns across x -1..1 */
-enum { LD_FLY, LD_DOWN, LD_CRASH, LD_OVER };
-static struct {
-    float h[LN];                        /* ground height, plane y */
-    int   pad[LN];                      /* bonus of the pad here, 0 = none */
-    int   label[LN];                    /* bonus written here, under its pad */
-    float padmid[LN];
-    float x, y, vx, vy, ang, thr, fuel, fuel0, t, banner, skill, err;
-    int   state, level, lives, score, hi, target, dirty;
-    char  msg[32];
-} D;
-static GLuint g_ter_tex;
-static const float LS = 0.055f;         /* lander size: matches the shader */
-
-static float ld_ground(float x)
-{
-    float u = (x + 1.0f) * 0.5f * LN;
-    int i = (int)u; i = i < 0 ? 0 : i >= LN ? LN - 1 : i;
-    return D.h[i];
-}
-
-static void ld_terrain(void)
-{
-    float h[LN + 1];
-    h[0] = -0.3f - 0.3f * rnd(); h[LN] = -0.3f - 0.3f * rnd();
-    for (int step = LN / 2, amp = 0; step >= 1; step /= 2, amp++)      /* jagged hills */
-        for (int i = step; i < LN; i += 2 * step)
-            h[i] = 0.5f * (h[i - step] + h[i + step]) + (rnd() - 0.5f) * 0.7f * powf(0.6f, (float)amp);
-    for (int i = 0; i < LN; i++) {
-        float x = (i + 0.5f) / LN * 2.0f - 1.0f;
-        float lo = -sqrtf(fmaxf(0.0f, 1.0f - x * x)) + 0.14f;       /* keep it inside the dome */
-        D.h[i] = fminf(fmaxf(h[i], lo), -0.08f);
-        D.pad[i] = 0; D.label[i] = 0; D.padmid[i] = 0;
-    }
-    static const int BONUS[3] = { 2, 3, 5 }, WIDE[3] = { 12, 9, 7 };
-    for (int k = 0; k < 3; k++) {
-        for (int tries = 0; tries < 50; tries++) {
-            int w = WIDE[k], c = 16 + rand() % (LN - 32 - w);
-            int ok = 1;
-            for (int i = c - 9; i < c + w + 9; i++) if (i >= 0 && i < LN && D.label[i]) ok = 0;
-            if (!ok) continue;
-            float y = D.h[c + w / 2];
-            if (k == 2) for (int i = c; i < c + w; i++) y = fminf(y, D.h[i]);   /* x5 sits low */
-            for (int i = c; i < c + w; i++) {
-                D.h[i] = y; D.pad[i] = BONUS[k];
-            }
-            for (int i = c - 4; i < c + w + 4; i++) {           /* room for the label */
-                D.label[i] = BONUS[k];
-                D.padmid[i] = ((c + w * 0.5f) / LN) * 2.0f - 1.0f;
-            }
-            break;
-        }
-    }
-    D.dirty = 1;
-}
-
-static void ld_upload(void)
-{
-    if (!g_ter_tex) {
-        glGenTextures(1, &g_ter_tex);
-        glBindTexture(GL_TEXTURE_2D, g_ter_tex);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        D.dirty = 1;
-    }
-    if (!D.dirty) return;
-    unsigned char t[LN * 4];
-    for (int i = 0; i < LN; i++) {
-        float r = (D.h[i] + 0.98f) / 1.03f;
-        t[i * 4] = (unsigned char)(fminf(fmaxf(r, 0.0f), 1.0f) * 255.0f + 0.5f);
-        t[i * 4 + 1] = (unsigned char)(D.pad[i] * 255 / 10);
-        t[i * 4 + 2] = (unsigned char)((D.padmid[i] + 1.0f) * 0.5f * 255.0f + 0.5f);
-        t[i * 4 + 3] = (unsigned char)(255 - D.label[i] * 255 / 10);
-        /* the shader snaps heights to its pixels, so store them exactly */
-        D.h[i] = t[i * 4] / 255.0f * 1.03f - 0.98f;
-    }
-    glBindTexture(GL_TEXTURE_2D, g_ter_tex);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, LN, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, t);
-    D.dirty = 0;
-}
-
-/* a fresh lander at the top, aiming for one of the pads */
-static void ld_launch(void)
-{
-    D.x = (rnd() - 0.5f) * 1.0f; D.y = 0.62f;
-    D.vx = (rnd() - 0.5f) * 0.12f; D.vy = 0.0f; D.ang = 0.0f; D.thr = 0;
-    D.fuel0 = D.fuel = fmaxf(450.0f, 1000.0f - 50.0f * (D.level - 1));
-    D.state = LD_FLY; D.t = 0;
-    D.skill = 0.8f + 0.5f * rnd();
-    D.err = rnd() < 0.12f ? 0.2f + 0.15f * rnd() : 0.0f;   /* now and then it misjudges the height */
-    int best = -1; float bv = -1;
-    for (int i = 0; i < LN; i++)
-        if (D.pad[i] && (i == 0 || D.pad[i - 1] != D.pad[i])) {
-            float v = D.pad[i] * (0.6f + 0.8f * rnd()) - fabsf(D.padmid[i] - D.x) * 2.0f;
-            if (v > bv) { bv = v; best = i; }
-        }
-    D.target = best;
-}
-
-static void ld_level(int n)
-{
-    D.level = n;
-    ld_terrain();
-    ld_launch();
-    snprintf(D.msg, sizeof D.msg, "LEVEL %d", n);
-    D.banner = 2.0f;
-}
-
-static void ld_new_game(void)
-{
-    D.lives = 3; D.score = 0;
-    ld_level(1);
-}
-
-static void ld_plate(float px, float py, float *ox, float *oy)   /* flat -> dot coordinates */
-{
-    float k = 1.0f + px * px + py * py;
-    *ox = 2.0f * px / k; *oy = 2.0f * py / k;
-}
-
-static void ld_crash(void)
-{
-    float bx, by;
-    ld_plate(D.x, D.y, &bx, &by);
-    boom(bx, by, 1, (const float[3]){ 1.0f, 0.75f, 0.2f });
-    boom(bx, by, 1, (const float[3]){ 0.9f, 0.9f, 0.95f });
-    D.state = LD_CRASH; D.t = 0; D.thr = 0;
-    snprintf(D.msg, sizeof D.msg, D.fuel <= 0 ? "OUT OF FUEL" : "CRASHED");
-    D.banner = 2.5f;
-}
-
-static void lander_step(float dt)
-{
-    if (!D.level) ld_new_game();
-    for (int i = 0; i < NEXP; i++) if (g_ex[i].on && (g_ex[i].t += dt) > (g_ex[i].big ? 1.4f : 0.7f)) g_ex[i].on = 0;
-    D.banner -= dt;
-    D.t += dt;
-    if (D.state == LD_DOWN) { if (D.t > 3.0f) ld_level(D.level + 1); return; }
-    if (D.state == LD_CRASH) {
-        if (D.t > 2.5f) { if (--D.lives <= 0) { D.state = LD_OVER; D.t = 0; snprintf(D.msg, sizeof D.msg, "GAME OVER"); D.banner = 4; } else ld_launch(); }
-        return;
-    }
-    if (D.state == LD_OVER) { if (D.t > 4.0f) ld_new_game(); return; }
-
-    float g = 0.030f + 0.004f * D.level, T = 0.105f;
-    float foot = 0.8f * LS;
-    /* the robot pilot: a wanted velocity from where the pad is, then the
-     * push that gets it there, then tilt the lander to give that push */
-    float xp = D.target >= 0 ? D.padmid[D.target] : 0.0f;
-    float hp = D.target >= 0 ? D.h[D.target] : -0.5f;
-    float dx = xp - D.x, alt = D.y - foot - hp;
-    float vxd = fmaxf(-0.11f, fminf(0.11f, 0.7f * dx * D.skill));
-    float vyd;
-    if (fabsf(dx) > 0.025f) {
-        float top = -1.0f;                                         /* clear the hills on the way */
-        float a = fminf(D.x, xp), b = fmaxf(D.x, xp);
-        for (float x = a - 0.06f; x <= b + 0.06f; x += 0.01f) top = fmaxf(top, ld_ground(x));
-        vyd = D.y - foot < top + 0.12f ? 0.05f : (D.y - foot > top + 0.25f ? -0.05f : 0.0f);
-    } else vyd = -fminf(0.12f, 0.022f + 0.3f * (alt + D.err) * D.skill);
-    float ax = 2.2f * (vxd - D.vx), ay = 2.2f * (vyd - D.vy) + g;
-    if (ay < 0.0f) ay = 0.0f;
-    float want = atan2f(-ax, ay);
-    float lim = alt < 0.06f ? 0.05f : 1.1f;
-    want = fmaxf(-lim, fminf(lim, want));
-    float da = want - D.ang, turn = 2.4f * dt;
-    D.ang += fmaxf(-turn, fminf(turn, da));
-    float need = sqrtf(ax * ax + ay * ay) * cosf(D.ang - want) / T;
-    D.thr = D.fuel > 0 ? fmaxf(0.0f, fminf(1.0f, need)) : 0.0f;
-    D.fuel = fmaxf(0.0f, D.fuel - D.thr * 55.0f * dt);
-    D.vx += -sinf(D.ang) * T * D.thr * dt;
-    D.vy += (cosf(D.ang) * T * D.thr - g) * dt;
-    D.x += D.vx * dt; D.y += D.vy * dt;
-    if (D.x < -0.97f || D.x > 0.97f || D.y > 0.95f) { D.vx = -D.vx * 0.5f; D.x = fmaxf(-0.97f, fminf(0.97f, D.x)); }
-
-    /* touchdown: both feet */
-    float fx = 0.7f * LS, gl = ld_ground(D.x - fx), gr = ld_ground(D.x + fx), gm = ld_ground(D.x);
-    float low = D.y - foot;
-    if (low <= fmaxf(fmaxf(gl, gr), gm)) {
-        int i0 = (int)((D.x - fx + 1.0f) * 0.5f * LN), i1 = (int)((D.x + fx + 1.0f) * 0.5f * LN);
-        i0 = i0 < 0 ? 0 : i0 >= LN ? LN - 1 : i0; i1 = i1 < 0 ? 0 : i1 >= LN ? LN - 1 : i1;
-        int pad = D.pad[i0] && D.pad[i0] == D.pad[i1] ? D.pad[i0] : 0;
-        if (pad && D.vy > -0.075f && fabsf(D.vx) < 0.05f && fabsf(D.ang) < 0.2f) {
-            int pts = 50 * pad + (int)D.fuel / 2;
-            D.score += pts;
-            if (D.score > D.hi) D.hi = D.score;
-            D.y = D.h[i0] + foot; D.vx = D.vy = 0; D.thr = 0;
-            D.state = LD_DOWN; D.t = 0;
-            snprintf(D.msg, sizeof D.msg, "LANDED x%d  %d", pad, pts);
-            D.banner = 3.0f;
-        } else ld_crash();
-    }
-}
-
-static void lander_uniforms(GLuint p)
-{
-    glActiveTexture(GL_TEXTURE1);
-    ld_upload();
-    glBindTexture(GL_TEXTURE_2D, g_ter_tex);
-    glUniform1i(glGetUniformLocation(p, "u_ter"), 1);
-    glActiveTexture(GL_TEXTURE0);
-    glUniform4f(glGetUniformLocation(p, "u_ship"), D.x, D.y, D.ang, D.thr);
-    glUniform4f(glGetUniformLocation(p, "u_g"), D.state == LD_CRASH || D.state == LD_OVER ? 1.0f : 0.0f,
-                D.state == LD_DOWN ? 1.0f : 0.0f, 0, 0);
-}
-
-static void lander_draw(void)
-{
-    dome_points_clear(&g_pix);
-    draw_booms();
-    hud(D.score, D.lives, "LEVEL", D.level, D.hi, D.msg, D.banner, (const float[3]){ 1.0f, 0.9f, 0.4f });
-    char buf[40];
-    snprintf(buf, sizeof buf, "FUEL %04d", (int)D.fuel);
-    float fc = D.fuel < D.fuel0 * 0.2f ? 1.0f : 0.6f;
-    dome_text_arc(&g_pix, buf, 79.0f, 140.0f, 4.5f, 1.0f, fc, fc * 0.5f, 0.95f);
-    snprintf(buf, sizeof buf, "V %03d H %03d", (int)fabsf(D.vy * 1000.0f), (int)fabsf(D.vx * 1000.0f));
-    dome_text_arc(&g_pix, buf, 79.0f, 40.0f, 4.5f, 0.7f, 0.9f, 1.0f, 0.95f);
-    dome_points_upload(&g_pix);
 }
 
 /* ---------------------------------------------------------------- */
@@ -2143,7 +1838,7 @@ static void scroller(float t)
 }
 
 /* ================================================================ */
-/* the tape loader (style 8)                                         */
+/* the tape loader (style 7)                                         */
 /* ================================================================ */
 /* ---- tape loading: a Spectrum-style screen loader --------------------
  * The picture is drawn (or read from a photo) into a 256x192 RGB canvas,
@@ -2946,11 +2641,10 @@ static void update(const DomeFrame *f)
     g_t += f->dt * L.speed;
     float dt = fminf(f->dt, 0.1f) * L.speed;
     int s = style();
-    if (s == 4) { maze_step(dt); if (M.dirty) m_upload(); }
-    if (s == 5) defender_step(dt);
-    if (s == 6) asteroids_step(dt);
-    if (s == 8) tp_update(dt);
-    if (s == 3) lander_step(dt);
+    if (s == 3) { maze_step(dt); if (M.dirty) m_upload(); }
+    if (s == 4) defender_step(dt);
+    if (s == 5) asteroids_step(dt);
+    if (s == 7) tp_update(dt);
 }
 
 static void draw(const DomeFrame *f)
@@ -2961,31 +2655,26 @@ static void draw(const DomeFrame *f)
     mat3 cam;                                  /* asteroids: world -> dome, the ship in front */
     for (int c = 0; c < 3; c++)
         for (int r = 0; r < 3; r++) cam[c * 3 + r] = A.cam[r * 3 + c];
-    if (s == 6) memcpy(ff.rot, cam, sizeof cam);
+    if (s == 5) memcpy(ff.rot, cam, sizeof cam);
     dome_surface_begin(p, &ff);
     glUniform1f(glGetUniformLocation(p, "u_t"), g_t);
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     glUniform1f(glGetUniformLocation(p, "u_grid"), floorf(L.grid + 0.5f));
-    if (s == 4) maze_uniforms(p);
-    if (s == 8) tp_uniforms(p);
-    if (s == 3) lander_uniforms(p);
-    if (s == 6) glUniform4f(glGetUniformLocation(p, "u_g"), 0, A.flash > 0 ? A.flash : 0.0f, 0, 0);
+    if (s == 3) maze_uniforms(p);
+    if (s == 7) tp_uniforms(p);
+    if (s == 5) glUniform4f(glGetUniformLocation(p, "u_g"), 0, A.flash > 0 ? A.flash : 0.0f, 0, 0);
     dome_surface_end();
     mat3 still; m3_identity(still);
-    if (s == 5) {
+    if (s == 4) {
         defender_draw(g_t);
         dome_draw_points(&g_pix, still, f->fade, 5.0f);
     }
     if (s == 3) {
-        lander_draw();
-        dome_draw_points(&g_pix, still, f->fade, 3.5f);
-    }
-    if (s == 4) {
         maze_draw();
         dome_draw_points(&g_pix, still, f->fade, 3.5f);
     }
-    if (s == 6) {
+    if (s == 5) {
         asteroids_draw(g_t);
         dome_draw_points(&g_ast, cam, f->fade * 0.22f, 8.0f);
         dome_draw_points(&g_ast, cam, f->fade, 3.0f);
