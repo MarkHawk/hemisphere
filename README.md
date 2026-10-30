@@ -91,6 +91,7 @@ hemisphere/
   dome/shaders.h           GLSL shared by every scene
   dome/text.c              dot-matrix text on the dome
   dome/font5x7.h           the font (X11 misc-fixed 5x7, public domain)
+  dome/audio.h, audio.c    sound from WLED audio sync (self-contained)
   scenes/deathstar.c       1   scenes/life.c     6
   scenes/planet.c          2   scenes/moon.c     7
   scenes/plasma.c          3   scenes/orbit.c    8
@@ -109,6 +110,8 @@ hemisphere/
   tools/remote/static/     the remote's page
   tools/remote/remote.service  runs the remote at boot
   tools/requirements.txt   Python packages for the tools
+  tools/audio/replay.py    replays a WLED audio capture, for testing
+  tools/audio/billie.txt   one minute of real audio sync data
   tools/windows/           start-up scripts for a Windows PC
   deploy.sh                copy to the Pi and build (Git Bash, WSL or Linux)
   docs/screenshots/        photos for the gallery
@@ -581,6 +584,64 @@ The service file assumes the program lives in `/home/pi/hemisphere` and
 runs as `pi`; edit `User=` and the paths to match your Pi. `--once` updates everything once
 and exits, which is handy for checking the network.
 
+## Sound from WLED
+
+Hemisphere can react to music, using the sound analysis your WLED lights
+already share. In WLED's AudioReactive settings, set one device (the one
+with the microphone) to **Send** under Audio Sync, V2 format. Hemisphere
+picks the packets up by itself: they go to the multicast group `239.0.0.1`
+on port 11988, so no IP addresses are needed. It prints
+`Audio: listening on 239.0.0.1:11988` at start-up.
+
+Scenes only react if their `audio` setting is 1. It is 0 (off) for every
+scene that isn't built for music.
+
+| Variable | Effect |
+|----------|--------|
+| `DOME_AUDIO_PORT=n` | Listen on another port (WLED's default is 11988); 0 turns sound off |
+| `DOME_AUDIO_GROUP=a.b.c.d` | Listen to another multicast group (WLED's is 239.0.0.1) |
+| `DOME_AUDIO_DEBUG=1` | Print the levels, beat, tempo and packet rate twice a second |
+
+The web remote's `/api/state` shows the same values under `audio`.
+
+**What it hears.** Of WLED's 16 bands, Hemisphere makes four smooth levels,
+each scaled to the loudest it has heard lately: **bass** (bands 0-2),
+**body** (3-6, the weight of the snare), **mid** (7-12, usually quiet) and
+**air** (13-15, the snare and hi-hat). In most music the bass never stops,
+so a loud bass is not a beat; the **beat** is a sharp jump in the air
+bands. From the beats it works out the **tempo**. If the packets stop for a
+second, everything eases back to nothing.
+
+**Testing with no music.** `tools/audio/billie.txt` is one minute of real
+audio sync data. Replay it as live packets:
+
+```
+python3 tools/audio/replay.py                  # this machine only
+DOME_AUDIO_DEBUG=1 ./hemisphere                # in another terminal
+```
+
+The tempo should settle at about 117 BPM. By default the replay stays on
+the machine it runs on; `--ttl 1` sends it across your network (to test the
+Pi from a PC), but then your WLED lights will dance to it too. If a WLED
+device is already sending, Hemisphere keeps following that one, so give
+the replay its own port: `--port 11989` with `DOME_AUDIO_PORT=11989`.
+
+**Making a scene react.** Add an `audio` setting (0 off, 1 on), and in
+`draw()`, between `dome_surface_begin` and `dome_surface_end`, call
+`dome_audio_uniforms(prog, f, L.audio)`. Then declare the values you want
+in the GLSL: `uniform float u_bass, u_body, u_mid, u_air, u_level, u_beat,
+u_phase, u_live;`. `f->audio` has them all on the CPU too, with the tempo
+and the 16 bands. Two rules:
+
+* For speed that follows the music, keep your own clock and add to it each
+  frame (`t += f->dt * speed * (1.0f + bass)`) and pass that in, rather
+  than multiplying `u_time` by a changing speed, which jumps.
+* Never flash the screen. Let beats swell sizes, move things and light
+  small areas, and ease anything big.
+
+`dome/audio.c` and `audio.h` need nothing from the rest of Hemisphere, so
+they can be lifted into another project.
+
 ## Web remote
 
 A phone-friendly remote control page, so you don't need a keyboard or SSH:
@@ -626,7 +687,7 @@ internet. `DOME_CTL_PORT` changes the port (0 turns it off).
 
 | Call | Body | Does |
 |------|------|------|
-| `GET /api/state` | | Current scene, its settings with ranges and hints, fps, orbit feed age |
+| `GET /api/state` | | Current scene, its settings with ranges and hints, fps, orbit feed age, sound levels |
 | `POST /api/scene` | `{"scene": 2}` | Switch scene, counting from 0 (-2 lens grid, -1 globe grid) |
 | `POST /api/key` | `{"key": "n"}` | Press a key: letters, digits, `,` `.`, `space`, `up`, `down` |
 | `POST /api/setting` | `{"name": "speed", "value": 2.5}` | Set a setting of the current scene or view |
@@ -900,6 +961,7 @@ These environment variables are for testing and previewing:
 | `DOME_DAYS=n` | Move the Moon scene's clock n days on (or back, if negative) |
 | `DOME_OVERLAY=1` | Start with the globe grid drawn over the scene (as if **O** had been pressed) |
 | `DOME_SHOT=n` | Save frame n to `shot.ppm` and quit |
+| `DOME_AUDIO_DEBUG=1` | Print the sound levels, beat and tempo twice a second (see "Sound from WLED") |
 
 ## Debugging notes
 

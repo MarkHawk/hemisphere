@@ -17,7 +17,8 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
   shader from a font texture instead of as dots.
 - `dome/`: the framework: lens mapping and calibration (`dome.c`, `dome.h`),
   the GL loader for Windows (`glload.c`, `glload.h`), shaders (`shaders.h`),
-  text rendering (`text.c`, `font5x7.h`)
+  text rendering (`text.c`, `font5x7.h`), sound from WLED audio sync (`audio.c`,
+  `audio.h`: self-contained, so keep it free of SDL, GL and dome.h)
 - `scenes/`: one file per scene (see the list above)
 - `calibration.cfg`: how this WorldEye's lens fits the dome (device settings)
 - `deathstar.cfg`: look settings for the Death Star scene
@@ -25,7 +26,8 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
 - `third_party/stb_image.h`: image loading (public domain / MIT)
 - `tools/`: `orbitfeed.py` + `orbitfeed.service` (Python, venv), `prep_textures.py`,
   `remote/` (a Flask web remote on port 5000, talking to the UDP control channel
-  on 127.0.0.1:5005), `windows/` (start-up and autostart scripts)
+  on 127.0.0.1:5005), `windows/` (start-up and autostart scripts), `audio/`
+  (`replay.py` sends the `billie.txt` capture as WLED audio sync packets, for testing)
 - `docs/screenshots/`: gallery photos used in the README
 - `deploy.sh`: copies the project to the Pi
 
