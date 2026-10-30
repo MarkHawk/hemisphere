@@ -25,7 +25,7 @@
 static struct {
     /* shown */
     float style, phosphor, lines, dot_size, grid_deg, hull, detail, windows,
-          intro, intro_s, wire_out;
+          intro, intro_s, wire_out, audio, warp;
     /* locked */
     float dish_lat, dish_dep, panels, panel_h, panel_w, seam_y, seam_x,
           pole_dim, trail, hull_in, wire_fade, start_lon;
@@ -35,6 +35,7 @@ static struct {
     .style = 2.0f, .phosphor = 0.0f, .lines = 1.0f, .dot_size = 3.0f,
     .grid_deg = 10.0f, .hull = 1.2f, .detail = 1.0f, .windows = 1.0f,
     .intro = 1.0f, .intro_s = 8.0f, .wire_out = 11.0f,
+    .audio = 0.0f, .warp = 0.4f,
     .dish_lat = 30.0f, .dish_dep = 0.10f, .panels = 1.9f, .panel_h = 5.0f,
     .panel_w = 10.0f, .seam_y = 3.0f, .seam_x = 4.0f, .pole_dim = 0.3f,
     .trail = 0.0f, .hull_in = 2.5f, .wire_fade = 3.0f, .start_lon = -55.0f,
@@ -66,6 +67,10 @@ static Param P[] = {
       "seconds for the zoom out" },
     { "wire_out", &L.wire_out, 0.5f,  0.0f, 120.0f, 0,
       "style 2: seconds after the start when the wireframe fades away" },
+    { "audio",    &L.audio,    1.0f,  0.0f, 1.0f, 0,
+      "0 off, 1 the wireframe bends to music (WLED audio sync)" },
+    { "warp",     &L.warp,     0.05f, 0.0f, 1.0f, 0,
+      "how far the wireframe bends to the music" },
 };
 
 static DomePoints g_pts;
@@ -76,6 +81,16 @@ static float      g_intro_t0, g_last_now = -100.0f, g_prev_intro = -1.0f;
 static int        g_replay;
 static int        g_warm;              /* hull shader drawn once yet? */
 static float      g_spin_off;          /* extra turn so the intro starts dish-left */
+
+/* The wireframe bending to music (audio 1). Everything here eases: the
+ * gain follows the setting over about a second, the levels are already
+ * smooth, and each beat's wave grows from nothing and dies away. */
+#define WAVE_S 0.45f                   /* a beat's wave, pole to equator */
+static float      g_gain;              /* eases to the audio setting */
+static float      g_rip_t, g_ring_t;   /* phases of the ripples and the rings */
+static float      g_wave_age[2] = { WAVE_S, WAVE_S }, g_wave_k[2];
+static float      g_prev_beat;
+static DomeWarp   g_warp;
 
 /* the extra spin that puts the dish start_lon degrees round from the front
  * (negative = to the left, as you face the globe). Done once per intro by
@@ -522,6 +537,7 @@ static void draw(const DomeFrame *f0)
         za *= fminf(1.0f, fmaxf(0.0f, (f->now - g_intro_t0) / 0.8f));
     if (za <= 0.0f) { dome_points_zoom(1.0f); return; }
     mat3 rot;
+    if (g_gain > 0.0f) dome_points_warp(&g_warp);   /* bending to music */
     if (L.trail > 0.0f) {
         /* one faint copy a few degrees behind: half the cost of the two
          * copies it used to draw, and hard to tell apart on the globe */
@@ -530,6 +546,44 @@ static void draw(const DomeFrame *f0)
     }
     dome_draw_points(&g_pts, f->rot, f->fade * lines_b * za, L.dot_size);
     dome_points_zoom(1.0f);
+    dome_points_warp(NULL);
+}
+
+static void update(const DomeFrame *f)
+{
+    const Audio *a = &f->audio;
+    float dt = f->dt;
+    g_gain += ((L.audio > 0.5f ? 1.0f : 0.0f) - g_gain) * (1.0f - expf(-dt / 0.4f));
+    if (g_gain < 0.001f) g_gain = 0.0f;
+    float k = g_gain * L.warp;
+
+    g_rip_t += dt * 6.0f;                /* ripples run out from the dish */
+    g_ring_t += dt * 2.5f;
+    /* a beat starts a wave at the pole in a free slot; if both are still
+     * rolling it is skipped, so no wave is ever cut short */
+    if (a->beat > g_prev_beat + 0.5f) {
+        int i = g_wave_age[0] >= WAVE_S ? 0 : g_wave_age[1] >= WAVE_S ? 1 : -1;
+        if (i >= 0) { g_wave_age[i] = 0.0f; g_wave_k[i] = 0.5f + 0.5f * a->air; }
+    }
+    g_prev_beat = a->beat;
+
+    DomeWarp *w = &g_warp;
+    memset(w, 0, sizeof *w);
+    w->swell = k * 0.10f * a->bass;      /* the whole sphere breathing out */
+    memcpy(w->origin, g_dish, sizeof w->origin);
+    w->ripple = k * 0.035f * a->body;
+    w->ripple_k = 9.0f;
+    w->ripple_t = g_rip_t;
+    w->still = asinf(DISH_R);            /* the dish itself stays put */
+    for (int i = 0; i < 2; i++) {
+        if (g_wave_age[i] < WAVE_S) g_wave_age[i] = fminf(WAVE_S, g_wave_age[i] + dt);
+        float t = g_wave_age[i] / WAVE_S;
+        w->wave_at[i] = t * 0.5f * DOME_PI;
+        w->wave[i] = t < 1.0f ? k * 0.06f * g_wave_k[i] * sinf(t * DOME_PI) : 0.0f;
+    }
+    w->ring = k * 0.03f;                 /* each latitude by its own band */
+    w->ring_t = g_ring_t;
+    memcpy(w->band, a->band, sizeof w->band);
 }
 
 static int key(SDL_Keycode k, int shift)
@@ -558,7 +612,7 @@ static int key(SDL_Keycode k, int shift)
 
 Scene scene_deathstar = {
     "DEATH STAR", "deathstar.cfg", SDLK_d, P, (int)(sizeof P / sizeof P[0]),
-    init, rebuild, NULL, draw, key,
+    init, rebuild, update, draw, key,
     "N/M thinner/thicker lines, I/K dish shallower/deeper, C phosphor colour, Z replay intro",
     "look.cfg"
 };

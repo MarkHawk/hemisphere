@@ -311,6 +311,8 @@ fades in; **Z** replays this and **C** cycles the wireframe colour.
 | `intro` | Zoom out from a dot when the scene starts (1 is on; **Z** replays it) |
 | `intro_s` | Seconds the zoom out takes |
 | `wire_out` | Style 2 only: seconds after the start when the wireframe fades away |
+| `audio` | 1 makes the wireframe bend to music from your WLED lights (see "Sound from WLED"); 0, the default, leaves it as it is |
+| `warp` | How far it bends, 0 to 1 (0.4 to start). The bass swells the whole sphere out and back, the snare body sends ripples out from the dish, each beat rolls a wave down from the pole, and each line of latitude wobbles with its own band. Only the lines bend: in the hull styles they move a little over the still hull |
 
 The hull's panelling, panel size, seams, dish position and pole dimming are
 now Mark's chosen look, fixed in the code rather than adjustable settings.
