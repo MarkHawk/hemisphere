@@ -691,6 +691,12 @@ and the 16 bands. Two rules:
 `dome/audio.c` and `audio.h` need nothing from the rest of Hemisphere, so
 they can be lifted into another project.
 
+**Credit.** The sound comes from [WLED](https://kno.wled.ge)'s AudioReactive
+Audio Sync (V2). No WLED code is included: the packet format follows WLED's
+public Sound Sync docs and was checked against live packets. The rough band
+centres in `replay.py` are the midpoints of the band edges noted in WLED's
+source.
+
 ## Web remote
 
 A phone-friendly remote control page, so you don't need a keyboard or SSH:
