@@ -13,6 +13,12 @@
  *   4 aurora          curtains of light across the top of the dome,
  *                     swaying in time and further with the snare body,
  *                     their tops lifting in colour with the treble
+ *   5 radial bars     64 thin bars standing out from the middle, bright
+ *                     tips glowing a little more on the beat
+ *   6 oscilloscope    a trace round the rim bent by the bands, with
+ *                     fading after-images
+ *   7 lissajous       a turning figure, a quarter turn a beat, sized by
+ *                     the bass, morphing to a new ratio every 20 s
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -218,6 +224,57 @@ static GLuint noise_build(void)
     return t;
 }
 
+/* ---- dots ---------------------------------------------------------- */
+/* One pool of dots in three sizes, shared by every style that draws dots
+ * (only one style is on screen at a time). Most dots live in dome space,
+ * placed by plane position: plane_dir() is the inverse of the shaders'
+ * plane(), so (0, 0) is the middle of the dome and radius 1 the rim. */
+#define POOL_N 30000
+enum { SMALL, MID, LARGE };
+static DomePoints g_pool[3];
+
+static void plane_dir(float x, float y, float out[3])
+{
+    float r2 = x * x + y * y, k = 1.0f / (1.0f + r2);
+    out[0] = 2.0f * x * k;
+    out[1] = 2.0f * y * k;
+    out[2] = (1.0f - r2) * k;
+}
+
+static void pool_clear(void) { for (int b = 0; b < 3; b++) dome_points_clear(&g_pool[b]); }
+
+static void dot_plane(int b, float x, float y, const float c[3], float a)
+{
+    float d[3];
+    plane_dir(x, y, d);
+    dome_points_push(&g_pool[b], d[0], d[1], d[2], c[0], c[1], c[2], a);
+}
+
+/* a line between two plane positions, as dots on the sphere */
+static void line_plane(int b, float x0, float y0, float x1, float y1, const float c[3], float a)
+{
+    float d0[3], d1[3];
+    plane_dir(x0, y0, d0);
+    plane_dir(x1, y1, d1);
+    dome_points_line(&g_pool[b], d0, d1, c[0], c[1], c[2], a, 0.007f);
+}
+
+/* draw the pool: fixed to the dome unless a rotation is given */
+static void pool_draw(const DomeFrame *f, const float *rot, float s0, float s1, float s2)
+{
+    mat3 id;
+    m3_identity(id);
+    const float size[3] = { s0, s1, s2 };
+    for (int b = 0; b < 3; b++) {
+        dome_points_upload(&g_pool[b]);
+        dome_draw_points(&g_pool[b], rot ? rot : id, f->fade * fminf(1.0f, L.bright), size[b]);
+    }
+}
+
+/* the beat arriving: true on the frame its eased swell starts rising */
+static float g_prev_beat;
+static int    g_beat_now;
+
 /* ================================================================== */
 /* The styles                                                          */
 /* ================================================================== */
@@ -354,7 +411,6 @@ static void stars_uniforms(GLuint p, const DomeFrame *f)
 #define LP_NEAR  -4.0f                /* where stars are born (phi ~ 2 deg) */
 #define LP_FAR    0.75f               /* past the rim */
 #define STAR_TAIL 4                   /* dots in a streak at full speed */
-static DomePoints g_star_pts[3];      /* small, middle, large dots */
 
 static void stars_points(const DomeFrame *f)
 {
@@ -363,7 +419,7 @@ static void stars_points(const DomeFrame *f)
     };
     float streak = 1.0f + 2.5f * L.react * g_gain * f->audio.bass;
     const float span = LP_FAR - LP_NEAR;
-    for (int b = 0; b < 3; b++) dome_points_clear(&g_star_pts[b]);
+    pool_clear();
     for (int i = 0; i < STARS_N; i++) {
         float off = hash3i(i, 1, 0) * span;
         float pos = off + g_flow * 0.6f;
@@ -383,17 +439,11 @@ static void stars_points(const DomeFrame *f)
             if (a < 0.02f) continue;
             float sp = sinf(phi);
             int bucket = phi < 0.55f ? 0 : phi < 1.05f ? 1 : 2;
-            dome_points_push(&g_star_pts[bucket], sp * ct, sp * st, cosf(phi),
+            dome_points_push(&g_pool[bucket], sp * ct, sp * st, cosf(phi),
                              tint[0], tint[1], tint[2], a);
         }
     }
-    mat3 id;
-    m3_identity(id);                     /* stars are fixed to the dome */
-    static const float SIZE[3] = { 2.0f, 3.0f, 4.5f };
-    for (int b = 0; b < 3; b++) {
-        dome_points_upload(&g_star_pts[b]);
-        dome_draw_points(&g_star_pts[b], id, f->fade * fminf(1.0f, L.bright), SIZE[b]);
-    }
+    pool_draw(f, NULL, 2.0f, 3.0f, 4.5f);
 }
 
 /* ---- 4: aurora, fixed to the dome: two curtains across the top half,
@@ -432,6 +482,156 @@ static void aurora_uniforms(GLuint p, const DomeFrame *f)
     set3(p, "u_c1", hi);
 }
 
+/* ---- a soft glow in the middle, the backdrop for styles drawn in dots:
+ * u_c0 its colour, u_k0 its strength, u_k1 how tight it is ---- */
+static const char GLOW[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float r = length(view.xy);\n"
+    "  vec3 col = u_c0 * exp(-r * u_k1) * u_k0 * step(0.0, view.z);\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+static void glow_set(GLuint p, float x, float strength, float tight)
+{
+    float c[3];
+    theme_rgb(x, c);
+    set3(p, "u_c0", c);
+    set1(p, "u_k0", strength);
+    set1(p, "u_k1", tight);
+}
+
+static void glow_uniforms(GLuint p, const DomeFrame *f)
+{
+    (void)f;
+    glow_set(p, g_t * 0.01f, 0.06f + 0.06f * g_live * L.react * f->audio.level, 6.0f);
+}
+
+/* a band's level for drawing: lifted like the spectrum ring's, 0..1 */
+static float band_lift(const DomeFrame *f, int i)
+{
+    return sqrtf(fminf(1.0f, f->audio.band[i] * g_gain * L.react));
+}
+
+/* ---- 5: radial bars: 64 thin bars standing out from the middle,
+ * mirrored left and right, bass at the bottom, each band twice. Bright
+ * tips, which glow a little more on the beat. ---- */
+static void radial_points(const DomeFrame *f)
+{
+    pool_clear();
+    for (int i = 0; i < 64; i++) {
+        float th = ((float)i + 0.5f) / 64.0f * 2.0f * DOME_PI;          /* 0 at the right */
+        float rel = th + 0.5f * DOME_PI;                                  /* from the bottom */
+        rel -= 2.0f * DOME_PI * floorf(rel / (2.0f * DOME_PI) + 0.5f);
+        float b = fabsf(rel) / DOME_PI;                                   /* 0 bottom, 1 top */
+        int band = (int)fminf(15.0f, b * 16.0f);
+        float idle = 0.14f + 0.07f * sinf(b * 9.0f - g_t * 0.8f);
+        float v = fmaxf(band_lift(f, band), idle * (1.0f - g_live));
+        float len = 0.05f + 0.85f * v;                                    /* plane units, 1 = rim */
+        float c[3];
+        theme_rgb(b * 0.7f + g_t * 0.01f, c);
+        float cx = cosf(th), sy = sinf(th);
+        line_plane(SMALL, 0.04f * cx, 0.04f * sy, len * cx, len * sy, c, 0.85f);
+        float w[3] = { 0.6f + 0.4f * c[0], 0.6f + 0.4f * c[1], 0.6f + 0.4f * c[2] };
+        dot_plane(LARGE, len * cx, len * sy, w, 0.55f + 0.45f * g_swell * L.react);
+    }
+    pool_draw(f, NULL, 2.5f, 3.0f, 5.0f);
+}
+
+/* ---- 6: oscilloscope ring: a trace round the rim, its wave built from
+ * the bands (the bass bends it in long waves, the treble adds fine
+ * ripple; WLED sends no waveform, so the trace is made up from the real
+ * levels), with two fading after-images. ---- */
+#define SCOPE_N   720
+#define SCOPE_OLD 2
+static float g_scope[SCOPE_OLD + 1][SCOPE_N];    /* offsets: now, then older */
+static float g_scope_acc, g_scope_ph[AUDIO_BANDS];
+
+static void scope_update(const DomeFrame *f)
+{
+    /* each band drives its own harmonic round the ring: the bass long
+     * slow waves, the treble fine fast ripple, each phase drifting */
+    float amp[AUDIO_BANDS];
+    for (int k = 0; k < AUDIO_BANDS; k++) {
+        amp[k] = f->audio.band[k] * g_gain * L.react * (k < 3 ? 0.05f : 0.028f);
+        g_scope_ph[k] += f->dt * L.speed * (0.6f + 0.35f * (float)k) * (k & 1 ? -1.0f : 1.0f);
+    }
+    /* after-images every 0.15 s */
+    g_scope_acc += f->dt;
+    if (g_scope_acc >= 0.15f) {
+        g_scope_acc = 0.0f;
+        memmove(g_scope[1], g_scope[0], SCOPE_OLD * sizeof g_scope[0]);
+    }
+    for (int i = 0; i < SCOPE_N; i++) {
+        float th = (float)i / SCOPE_N * 2.0f * DOME_PI;
+        float o = (1.0f - g_live) * 0.03f * sinf(3.0f * th + g_t * 0.6f);   /* idle: a slow sine */
+        for (int k = 0; k < AUDIO_BANDS; k++) o += amp[k] * sinf((3.0f + 4.0f * k) * th + g_scope_ph[k]);
+        g_scope[0][i] = o;
+    }
+}
+
+static void scope_points(const DomeFrame *f)
+{
+    (void)f;
+    pool_clear();
+    float c[3], dim[3];
+    theme_rgb(0.35f + g_t * 0.01f, c);
+    for (int k = 0; k < 3; k++) dim[k] = c[k] * 0.5f;
+    for (int h = SCOPE_OLD; h >= 0; h--) {
+        float a = h == 0 ? 1.0f : 0.35f / (float)h;
+        for (int i = 0; i < SCOPE_N; i++) {
+            int j = (i + 1) % SCOPE_N;
+            float t0 = (float)i / SCOPE_N * 2.0f * DOME_PI, t1 = (float)j / SCOPE_N * 2.0f * DOME_PI;
+            float r0 = 0.72f + g_scope[h][i], r1 = 0.72f + g_scope[h][j];
+            line_plane(h == 0 ? MID : SMALL, r0 * cosf(t0), r0 * sinf(t0),
+                       r1 * cosf(t1), r1 * sinf(t1), h == 0 ? c : dim, a);
+            if (h == 0)                                       /* the phosphor's glow */
+                line_plane(LARGE, r0 * cosf(t0), r0 * sinf(t0), r1 * cosf(t1), r1 * sinf(t1), c, 0.12f);
+        }
+    }
+    /* the baseline, faint, like a graticule */
+    for (int i = 0; i < 120; i += 2) {
+        float t = (float)i / 120.0f * 2.0f * DOME_PI;
+        dot_plane(SMALL, 0.72f * cosf(t), 0.72f * sinf(t), dim, 0.25f);
+    }
+    pool_draw(f, NULL, 2.0f, 3.0f, 8.0f);
+}
+
+/* ---- 7: Lissajous: an a:b figure turning a quarter turn a beat (slowly
+ * when idle), sized by the bass. Every 20 s it morphs to the next ratio
+ * over 4 s rather than cutting. ---- */
+static float g_liss_d;
+
+static void liss_points(const DomeFrame *f)
+{
+    static const float RATIO[5][2] = { { 3, 2 }, { 5, 4 }, { 4, 3 }, { 5, 3 }, { 3, 1 } };
+    const Audio *a = &f->audio;
+    float bps = a->bpm > 0.0f ? a->bpm / 60.0f : 0.0f;
+    g_liss_d += f->dt * L.speed * (0.2f * (1.0f - g_live) + g_live * bps * 0.5f * DOME_PI);
+    float cyc = g_t / 20.0f;
+    int k = (int)floorf(cyc);
+    float e = smooth01(0.8f, 1.0f, cyc - (float)k);                 /* the last 4 s morph */
+    const float *r0 = RATIO[k % 5], *r1 = RATIO[(k + 1) % 5];
+    float fa = r0[0] + (r1[0] - r0[0]) * e, fb = r0[1] + (r1[1] - r0[1]) * e;
+    float size = 0.5f + 0.28f * a->bass * g_gain * L.react + 0.04f * g_swell;
+    float rot = g_t * 0.05f, cr = cosf(rot), sr = sinf(rot);
+    pool_clear();
+    const int N = 900;
+    float px = 0, py = 0;
+    for (int i = 0; i <= N; i++) {
+        float s = (float)i / N * 2.0f * DOME_PI;
+        float x = size * sinf(fa * s + g_liss_d), y = size * sinf(fb * s);
+        float X = x * cr - y * sr, Y = x * sr + y * cr;
+        if (i > 0) {
+            float c[3];
+            theme_rgb((float)i / N + g_t * 0.02f, c);
+            line_plane(MID, px, py, X, Y, c, 0.9f);
+            line_plane(LARGE, px, py, X, Y, c, 0.12f);           /* a soft glow round it */
+        }
+        px = X; py = Y;
+    }
+    pool_draw(f, NULL, 2.0f, 2.5f, 7.0f);
+}
+
 /* ================================================================== */
 /* The table: one row per style, in N order                            */
 /* ================================================================== */
@@ -449,6 +649,9 @@ static const Style STYLES[] = {
     { "ripples",       RIPPLES, ripples_update, ripples_uniforms, NULL },
     { "starfield",     STARS,   NULL,           stars_uniforms,   stars_points },
     { "aurora",        AURORA,  NULL,           aurora_uniforms,  NULL },
+    { "radial bars",   GLOW,    NULL,           glow_uniforms,    radial_points },
+    { "oscilloscope",  GLOW,    scope_update,   glow_uniforms,    scope_points },
+    { "lissajous",     GLOW,    NULL,           glow_uniforms,    liss_points },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
@@ -456,7 +659,8 @@ static GLuint g_prog[NSTYLE];
 
 static Param P[] = {
     { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0,
-      "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora (N)" },
+      "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora, 5 radial bars, "
+      "6 oscilloscope, 7 lissajous (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
@@ -483,7 +687,7 @@ static void init(void)
     g_spec_tex = tex_new(AUDIO_BANDS, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
     g_rip_tex = tex_new(RIP_N, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
     g_noise_tex = noise_build();
-    for (int b = 0; b < 3; b++) dome_points_init(&g_star_pts[b], STARS_N * (STAR_TAIL + 1));
+    for (int b = 0; b < 3; b++) dome_points_init(&g_pool[b], POOL_N);
 }
 
 static void update(const DomeFrame *f)
@@ -494,6 +698,8 @@ static void update(const DomeFrame *f)
     g_live = a->live * g_gain;
     float beat = a->beat * g_gain;
     g_swell = ease_to(g_swell, beat, beat > g_swell ? 0.06f : 0.15f, dt);
+    g_beat_now = beat > g_prev_beat + 0.4f;
+    g_prev_beat = beat;
     g_t += dt * L.speed;
     g_flow += dt * L.speed * (0.25f + 1.5f * L.react * g_gain * a->bass);
     const Style *st = &STYLES[style()];
