@@ -54,8 +54,8 @@ rest are on `,` and `.` and the web remote.
 | , and . | Computers | Classic computing: a front panel of switches and lamps with a program being toggled in, oscilloscope figures, a scrolling assembler listing, a circuit board, core memory, a packet network round the globe, and a globe of blinking lamp panels |
 | , and . | Hypnotic | Tesseract, quasicrystal, moire, Fibonacci globe, Truchet maze, hypno spiral, tunnel, pendulum, breathing hexagons, geodesic sphere |
 | , and . | Sports balls | The globe as a ball, rolling: football, basketball, tennis, cricket, baseball, volleyball, golf, pool 8-ball, beach ball, bowling ball, and two plastic puzzles that solve themselves: a puzzle cube (2x2 to 5x5) and a megaminx |
-| , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, a rotozoomer, a lunar lander, a maze chase, Rim defender, Asteroids on a globe, 16-colour plasma, tape loading (a random picture each time, or your own photos), pixel fire. The four games are full games that play themselves across the whole dome |
-| , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, an air traffic globe, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
+| , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, a rotozoomer, a maze chase, Rim defender, Asteroids on a globe, 16-colour plasma, tape loading (a random picture each time, or your own photos), pixel fire. The three games are full games that play themselves across the whole dome |
+| , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
 | , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
 | , and . | Eyes | One big eye filling the dome, looking round the room, blinking, its pupil opening and closing: brown, blue, green and hazel human eyes, a cat, an owl, a reptile, and an original fire eye of glowing embers in an obsidian eyeball |
 
@@ -425,9 +425,9 @@ reaches first. The tennis and baseball seams follow the curve where height
 equals x squared minus y squared.
 
 **8-bit retro settings:** `style` (**N**: 0 digital rain, 1 copper bars, 2
-rotozoomer, 3 lunar lander, 4 maze chase, 5 Rim defender, 6 Asteroids, 7
-16-colour plasma, 8 tape loading, 9 pixel fire), `speed`, `scale` (pixel
-size), `bright`, `grid` (show the gaps between pixels). The four games are
+rotozoomer, 3 maze chase, 4 Rim defender, 5 Asteroids, 6 16-colour
+plasma, 7 tape loading, 8 pixel fire), `speed`, `scale` (pixel size),
+`bright`, `grid` (show the gaps between pixels). The three games are
 full games, each played by a small robot in C, with lives, a score and high
 score, levels that get harder, and GAME OVER then a fresh game.
 
@@ -449,14 +449,6 @@ score, levels that get harder, and GAME OVER then a fresh game.
 * **Rotozoomer:** the demo-scene classic. A made-up pixel tile (a framed
   diamond gem on a chequer) turns and zooms in and out while its colours
   cycle through the 16-colour palette. One small shader, no dots.
-* **Lunar lander:** a robot flies a lander down onto jagged ground. The
-  pads pay x2 (wide), x3 and x5 (narrow, and low in a valley); fuel left
-  over scores too. Too fast, tilted or off a pad and it crashes. Every
-  landing is a new level with new ground, a little more gravity and less
-  fuel, so a game usually ends around level 10 or 12, out of fuel. The
-  robot picks a pad, climbs over the hills in the way, and now and then
-  misjudges its height and comes in too hard. Fuel and speeds are round
-  the rim with the score.
 * **Maze chase:** an original maze game. A little round robot clears the
   dots while four spiky chasers hunt it, each in its own way (one chases,
   one heads it off, one flanks, one wanders). Power cells turn them blue
@@ -481,21 +473,13 @@ score, levels that get harder, and GAME OVER then a fresh game.
 The aliens, ships and pictures are made up for this program.
 
 **Retro screen settings:** `style` (**N**: 0 defence command, 1 noughts
-and crosses, 2 cyborg HUD, 3 air traffic, 4 ship's terminal, 5 light
-grid, 6 closedown), `speed`, `text` (the readouts round
+and crosses, 2 cyborg HUD, 3 ship's terminal, 4 light grid, 5
+closedown), `speed`, `text` (the readouts round
 the rim), `bright`. It has no number key: press `,` or `.` to reach it, or
 pick it on the web remote. Defence command draws the coastlines from the
 Earth map in `textures/` (made-up continents if there isn't one), holds the
 globe over the North Atlantic so Europe and North America face you, and runs
-a 66-second simulation from DEFCON 5 to 1 that ends with no winner. Air
-traffic makes the whole world one radar globe that turns with the ball:
-18 flights cross it on great circles between 30 real airports, a sweep
-goes round the pole painting each aircraft's plot and leaving a trail of
-older ones, and each has a data tag (made-up callsign, then flight level
-with `^` climbing or `v` descending, and ground speed in tens of knots)
-kept upright to the globe's north. Two aircraft under 1.5 degrees and
-2,000 feet apart flash red, and the rim shows the traffic, alerts and the
-time in UTC. In
+a 66-second simulation from DEFCON 5 to 1 that ends with no winner. In
 noughts and crosses both sides play perfectly, so every game is a draw; the
 score sits under the middle board, and at the end the boards dim and the
 verdict comes up in the middle. The
