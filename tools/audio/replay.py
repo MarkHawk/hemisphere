@@ -24,9 +24,12 @@ import struct
 import sys
 import time
 
-# Rough centre of each of WLED's 16 bands, in Hz, for FFT_MajorPeak
-BAND_HZ = (65, 107, 172, 258, 366, 495, 689, 969,
-           1270, 1658, 2153, 2713, 3359, 4091, 5792, 8182)
+# A stand-in centre for each of the 16 bands, in Hz, for FFT_MajorPeak:
+# 40 Hz (the lowest the WLED docs give) to 10 kHz split into 16 equal
+# steps on a log scale, each band's centre the middle of its step
+BAND_LO, BAND_HI = 40.0, 10000.0
+BAND_HZ = tuple(round(BAND_LO * (BAND_HI / BAND_LO) ** ((i + 0.5) / 16))
+                for i in range(16))
 
 
 def read_capture(path: pathlib.Path) -> list[tuple[float, float, int, list[int]]]:
