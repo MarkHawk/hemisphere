@@ -58,7 +58,7 @@ rest are on `,` and `.` and the web remote.
 | , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
 | , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
 | , and . | Eyes | One big eye filling the dome, looking round the room, blinking, its pupil opening and closing: brown, blue, green and hazel human eyes, a cat, an owl, a reptile, and an original fire eye of glowing embers in an obsidian eyeball |
-| , and . | Music | Built for sound from your WLED lights (see "Sound from WLED"): a spectrum ring round the rim and a pulse globe that swells with the bass and the beat. With no music each style idles calmly |
+| , and . | Music | Built for sound from your WLED lights (see "Sound from WLED"): a spectrum ring round the rim, a pulse globe that swells with the bass and the beat, ripples sent out by snare hits, and a starfield that speeds up with the bass. With no music each style idles calmly |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,

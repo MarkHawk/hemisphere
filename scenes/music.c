@@ -6,6 +6,9 @@
  *                     treble at the top, mirrored left and right
  *   1 pulse globe     a glowing ball in the middle that swells with the
  *                     bass and the beat, with a halo from the treble
+ *   2 ripples         every snare hit sends a ring out from the middle
+ *   3 starfield       stars streaming out from the middle, faster with
+ *                     the bass, stretching into streaks at speed
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -19,15 +22,15 @@
 #include <stdio.h>
 #include <string.h>
 
-#define NSTYLE 2
-static const char *NAMES[NSTYLE] = { "spectrum ring", "pulse globe" };
+#define NSTYLE 4
+static const char *NAMES[NSTYLE] = { "spectrum ring", "pulse globe", "ripples", "starfield" };
 
 static struct { float style, audio, react, speed, theme, bright; } L =
     { 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f };
 
 static Param P[] = {
     { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0,
-      "0 spectrum ring, 1 pulse globe (N)" },
+      "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
@@ -39,8 +42,9 @@ static Param P[] = {
 /* Every style gets these. u_bass..u_live come from dome_audio_uniforms,
  * already faded by the scene's gain; u_swell is the beat with its leap
  * eased; u_t is the scene's clock, u_flow a clock that runs faster with
- * the bass. u_tex is the spectrum (16x1). */
-#define U "uniform float u_t, u_flow, u_bright, u_theme, u_react, u_swell;\n" \
+ * the bass. u_tex is the spectrum (16x1) or the ripples (256x1); u_streak
+ * is how far stars stretch. */
+#define U "uniform float u_t, u_flow, u_bright, u_theme, u_react, u_swell, u_streak;\n" \
           "uniform float u_bass, u_body, u_mid, u_air, u_level, u_phase, u_live;\n" \
           "uniform sampler2D u_tex;\n"
 
@@ -91,10 +95,60 @@ static const char PULSE[] =
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-static const char *GLSL[NSTYLE] = { RING, PULSE };
+/* ---- 2: ripples. The CPU keeps the last few seconds of beats in a
+ * 256x1 texture, newest at the left, shifted along as time passes; read
+ * at the angle from the middle, each beat is a ring moving out. ---- */
+static const char RIPPLES[] =
+    U
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float phi = acos(clamp(view.z, -1.0, 1.0));\n"
+    "  float u = phi / (PI * 0.5);\n"
+    "  float r = texture2D(u_tex, vec2(0.01 + 0.98 * u, 0.5)).r * (1.0 - 0.55 * u);\n"
+    "  vec3 c = theme(u_theme, u * 0.4 + u_t * 0.015);\n"
+    "  vec3 col = c * r * 1.2 + vec3(1.0) * r * r * r * 0.35;\n"
+    /* a soft standing glow in the middle from the overall level */
+    "  col += c * exp(-phi * 4.0) * (0.06 + 0.18 * u_level * u_react);\n"
+    /* and very faint fixed rings, so the dome is never quite empty */
+    "  col += theme(u_theme, 0.5) * 0.025 * (0.5 + 0.5 * cos(phi * 20.0));\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+/* ---- 3: starfield. Cells laid out by angle round the middle and by the
+ * log of the distance from it, so stars grow as they come out; three
+ * layers, written out. u_flow moves them, u_streak stretches them. ---- */
+static const char STARS[] =
+    U
+    "float layer(float theta, float lp, float n, float seed){\n"
+    "  float k = n / (2.0 * PI);\n"                      /* square cells */
+    "  vec2 g = vec2(theta / (2.0 * PI) * n, (lp - u_flow * 0.6) * k);\n"
+    "  vec2 id = floor(g), fr = fract(g) - 0.5;\n"
+    "  float h = h3(vec3(id, seed));\n"
+    "  vec2 o = vec2(h3(vec3(id, seed + 1.0)), h3(vec3(id, seed + 2.0))) - 0.5;\n"
+    "  vec2 d = fr - o * 0.6;\n"
+    "  d.y /= u_streak;\n"                               /* stretch outwards */
+    "  return exp(-dot(d, d) * 160.0) * step(0.55, h) * (0.4 + 0.6 * fract(h * 7.0));\n"
+    "}\n"
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float phi = acos(clamp(view.z, -1.0, 1.0));\n"
+    "  float theta = atan(view.y, view.x), lp = log(max(phi, 0.005));\n"
+    "  float s = layer(theta, lp, 48.0, 1.0) + layer(theta, lp, 80.0, 7.0) * 0.8\n"
+    "          + layer(theta, lp, 130.0, 13.0) * 0.6;\n"
+    "  s *= smoothstep(0.02, 0.3, phi);\n"               /* born in the distance */
+    "  vec3 c = mix(vec3(1.0), theme(u_theme, theta / (2.0 * PI) + u_t * 0.01), 0.35);\n"
+    /* a faint glow at the vanishing point */
+    "  vec3 col = c * s + theme(u_theme, u_t * 0.01) * exp(-phi * 6.0) * 0.08;\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+static const char *GLSL[NSTYLE] = { RING, PULSE, RIPPLES, STARS };
 
 static GLuint g_prog[NSTYLE];
 static GLuint g_spec_tex;            /* 16x1: the bands, 0..255 */
+#define RIP_N    256                 /* texels in the ripple history */
+#define RIP_SECS 3.0f                /* seconds for a ring to reach the rim */
+static GLuint g_rip_tex;
+static float  g_rip[RIP_N];          /* newest first */
+static float  g_rip_acc;
 static float  g_t, g_flow;           /* the scene's clocks */
 static float  g_gain;                /* eases to the audio setting */
 static float  g_swell;               /* the beat, with its leap eased */
@@ -108,7 +162,7 @@ static int style(void)
 static GLuint tex_1d(int w)
 {
     GLuint t;
-    unsigned char zero[256] = { 0 };
+    unsigned char zero[RIP_N] = { 0 };
     glGenTextures(1, &t);
     glBindTexture(GL_TEXTURE_2D, t);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -123,6 +177,7 @@ static void init(void)
 {
     for (int i = 0; i < NSTYLE; i++) g_prog[i] = dome_surface_program_themed(GLSL[i]);
     g_spec_tex = tex_1d(AUDIO_BANDS);
+    g_rip_tex = tex_1d(RIP_N);
 }
 
 static float ease_to(float v, float target, float tau, float dt)
@@ -139,6 +194,19 @@ static void update(const DomeFrame *f)
     g_swell = ease_to(g_swell, beat, beat > g_swell ? 0.06f : 0.15f, dt);
     g_t += dt * L.speed;
     g_flow += dt * L.speed * (0.25f + 1.5f * L.react * g_gain * a->bass);
+
+    if (style() == 2) {
+        /* what enters the middle now: the eased beat, weighted by the
+         * snare body; with no music, a soft ring every 4.5 seconds */
+        float idle = fmodf(g_t, 4.5f) - 0.2f;
+        float in = g_swell * L.react * (0.55f + 0.45f * a->body * g_gain)
+                 + (1.0f - a->live * g_gain) * 0.45f * expf(-idle * idle / 0.012f);
+        float step = RIP_SECS / (RIP_N * L.speed);
+        for (g_rip_acc += dt; g_rip_acc >= step; g_rip_acc -= step) {
+            memmove(g_rip + 1, g_rip, (RIP_N - 1) * sizeof g_rip[0]);
+            g_rip[0] = fminf(1.0f, in);
+        }
+    }
 }
 
 static void draw(const DomeFrame *f)
@@ -162,6 +230,17 @@ static void draw(const DomeFrame *f)
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, AUDIO_BANDS, 1, GL_LUMINANCE, GL_UNSIGNED_BYTE, px);
         glUniform1i(glGetUniformLocation(p, "u_tex"), 1);
     }
+    if (s == 2) {
+        unsigned char px[RIP_N];
+        for (int i = 0; i < RIP_N; i++) px[i] = (unsigned char)lroundf(g_rip[i] * 255.0f);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, g_rip_tex);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, RIP_N, 1, GL_LUMINANCE, GL_UNSIGNED_BYTE, px);
+        glUniform1i(glGetUniformLocation(p, "u_tex"), 1);
+    }
+    if (s == 3)
+        glUniform1f(glGetUniformLocation(p, "u_streak"),
+                    1.0f + 2.5f * L.react * g_gain * f->audio.bass);
     dome_surface_end();
 }
 
