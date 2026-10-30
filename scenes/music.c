@@ -9,6 +9,11 @@
  *   2 ripples         every snare hit sends a ring out from the middle
  *   3 starfield       stars streaming out from the middle, faster with
  *                     the bass, stretching into streaks at speed
+ *   4 aurora          curtains of light across the top of the dome,
+ *                     swaying in time and further with the snare body,
+ *                     their tops lifting in colour with the treble
+ *   5 planet          a slowly turning world whose city lights and
+ *                     atmosphere breathe with the music
  *
  * With no music every style has a calm, slow idle of its own, and the
  * change between idle and music is eased over about a second.
@@ -22,15 +27,17 @@
 #include <stdio.h>
 #include <string.h>
 
-#define NSTYLE 4
-static const char *NAMES[NSTYLE] = { "spectrum ring", "pulse globe", "ripples", "starfield" };
+#define NSTYLE 6
+static const char *NAMES[NSTYLE] = {
+    "spectrum ring", "pulse globe", "ripples", "starfield", "aurora", "planet"
+};
 
 static struct { float style, audio, react, speed, theme, bright; } L =
     { 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f };
 
 static Param P[] = {
     { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0,
-      "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield (N)" },
+      "0 spectrum ring, 1 pulse globe, 2 ripples, 3 starfield, 4 aurora, 5 planet (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
@@ -140,7 +147,61 @@ static const char STARS[] =
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
-static const char *GLSL[NSTYLE] = { RING, PULSE, RIPPLES, STARS };
+/* ---- 4: aurora, fixed to the dome: two curtains across the top half,
+ * with fine rays. With music the folds sway on the beat's phase, further
+ * when the snare body is loud; the overall brightness moves 15% at most. */
+static const char AURORA[] =
+    U
+    "float curtain(float c, float y, float base, float seed, float sway){\n"
+    "  float b = base + 0.07 * sin(c * 2.0 + u_t * 0.15 + seed)\n"
+    "        + sway * 0.06 * sin(c * 3.5 + seed * 2.0);\n"
+    "  float h = y - b;\n"
+    "  float rays = 0.55 + 0.45 * sin(c * 34.0 + 2.5 * sin(c * 4.0 + u_t * 0.3 + seed) + sway);\n"
+    "  return smoothstep(0.0, 0.04, h) * exp(-max(h, 0.0) * 4.5) * rays;\n"
+    "}\n"
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float c = atan(view.x, view.z), y = view.y;\n"
+    "  float sway = mix(sin(u_t * 0.5), sin(6.2832 * u_phase), u_live)\n"
+    "             * (0.6 + 2.2 * u_body * u_react);\n"
+    "  float a1 = curtain(c, y, 0.02, 0.0, sway);\n"
+    "  float a2 = curtain(c * 1.3 + 0.7, y, 0.22, 3.0, -sway * 0.7) * 0.55;\n"
+    "  float top = clamp((y - 0.05) * 2.5, 0.0, 1.0) * (0.35 + 0.65 * u_air * u_react);\n"
+    "  vec3 low = theme(u_theme, 0.08 + 0.05 * sin(c + u_t * 0.05));\n"
+    "  vec3 high = theme(u_theme, 0.32);\n"
+    "  float lift = 0.85 + 0.15 * min(u_level * u_react, 1.0);\n"
+    "  vec3 col = mix(low, high, top) * (a1 + a2) * 0.85 * lift * smoothstep(0.92, 0.6, y);\n"
+    "  col += vec3(0.0, 0.008, 0.025) * (y + 1.0);\n"        /* night sky */
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+/* ---- 5: planet: turns with the globe. Lit from the upper left; on the
+ * night side its cities glow, and they and the atmosphere breathe with
+ * the overall level. One cheap noise for the land, no fbm. */
+static const char PLANET[] =
+    U
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float n = n3(dir * 2.2) * 0.7 + n3(dir * 5.5) * 0.3;\n"
+    "  float land = smoothstep(0.50, 0.53, n);\n"
+    "  float ice = smoothstep(0.80, 0.86, abs(dir.y));\n"
+    "  vec3 sea = vec3(0.02, 0.06, 0.16), ground = mix(vec3(0.10, 0.22, 0.08), vec3(0.30, 0.26, 0.16), smoothstep(0.55, 0.7, n));\n"
+    "  vec3 surf = mix(mix(sea, ground, land), vec3(0.45, 0.5, 0.55), ice);\n"
+    "  vec3 L = normalize(vec3(-0.7, 0.35, 0.6));\n"
+    "  float day = smoothstep(-0.12, 0.3, dot(view, L));\n"
+    "  vec3 col = surf * (0.08 + 0.92 * day) * max(dot(view, L), 0.0);\n"
+    /* cities: dots in some cells of a grid on the land, on the night side */
+    "  vec3 g = dir * 34.0;\n"
+    "  float h = h3(floor(g));\n"
+    "  float city = smoothstep(0.30, 0.05, length(fract(g) - 0.5)) * step(0.72, h) * land * (1.0 - ice);\n"
+    "  float breathe = mix(0.75, 0.35 + 0.65 * min(u_level * u_react, 1.0), u_live);\n"
+    "  col += theme(u_theme, 0.15 + h * 0.2) * city * (1.0 - day) * breathe * 1.4;\n"
+    /* atmosphere round the edge, brighter on the day side */
+    "  float rim = pow(1.0 - max(view.z, 0.0), 3.0);\n"
+    "  float air = 0.30 + 0.20 * min(u_level * u_react, 1.0) + 0.12 * u_swell * u_react;\n"
+    "  col += mix(vec3(0.3, 0.55, 1.0), theme(u_theme, 0.05), 0.3) * rim * air * (0.35 + 0.65 * day);\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
+static const char *GLSL[NSTYLE] = { RING, PULSE, RIPPLES, STARS, AURORA, PLANET };
 
 static GLuint g_prog[NSTYLE];
 static GLuint g_spec_tex;            /* 16x1: the bands, 0..255 */
