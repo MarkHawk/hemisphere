@@ -58,7 +58,7 @@ rest are on `,` and `.` and the web remote.
 | , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
 | , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
 | , and . | Eyes | One big eye filling the dome, looking round the room, blinking, its pupil opening and closing: brown, blue, green and hazel human eyes, a cat, an owl, a reptile, and an original fire eye of glowing embers in an obsidian eyeball |
-| , and . | Music | Built for sound from your WLED lights (see "Sound from WLED"): a spectrum ring round the rim, a pulse globe that swells with the bass and the beat, ripples sent out by snare hits, a starfield that speeds up with the bass, swaying aurora curtains, and a planet whose lights breathe with the music. With no music each style idles calmly |
+| , and . | Music | Built for sound from your WLED lights (see "Sound from WLED"): a spectrum ring round the rim, a pulse globe that swells with the bass and the beat, ripples sent out by snare hits, a starfield that speeds up with the bass, and swaying aurora curtains. With no music each style idles calmly |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -513,17 +513,17 @@ iris of streaming embers, an obsidian eyeball with lava veins, dark rock
 with glowing seams for lids, heat shimmer and rising sparks.
 
 **Music settings:** `style` (**N**: 0 spectrum ring, 1 pulse globe, 2
-ripples, 3 starfield, 4 aurora, 5 planet), `audio` (1, the default here,
+ripples, 3 starfield, 4 aurora), `audio` (1, the default here,
 reacts to music from your WLED lights; 0 shows only the calm idle),
 `react` (how strongly it responds), `speed`, `theme` (**M**: the eight
 shared colour themes), `bright`. The spectrum ring stands 16 bars in from
-the rim, bass at the bottom and treble at the top. The pulse globe swells
+the rim, bass at the bottom and treble at the top; loud bass reaches
+nearly to the middle. The pulse globe swells
 with the bass and the beat and its halo follows the treble. In ripples,
 each snare hit sends a ring out from the middle. The starfield speeds up
 with the bass and stretches into streaks (its stars are dots in soft
 fixed tints; the theme colours the glow behind them). The aurora's curtains sway in
-time with the music, further when the snare is loud. The planet's city
-lights and atmosphere breathe with the overall level. With no music every
+time with the music, further when the snare is loud. With no music every
 style idles slowly, and the change between the two is eased over about a
 second. Nothing flashes: beats swell, move and light small areas, and
 sound changes the overall brightness by 15% at most.
