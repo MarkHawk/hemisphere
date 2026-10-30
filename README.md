@@ -110,6 +110,7 @@ hemisphere/
   tools/remote/playlist.py the remote's playlist (runs in the background)
   tools/remote/static/     the remote's page
   tools/remote/remote.service  runs the remote at boot
+  tools/start-hemisphere.sh  starts Hemisphere with the desktop and keeps it running
   tools/requirements.txt   Python packages for the tools
   tools/audio/replay.py    replays a WLED audio capture, for testing
   tools/audio/billie.txt   one minute of real audio sync data
@@ -148,19 +149,27 @@ scp -r dome scenes tools third_party pi@raspberrypi.local:~/hemisphere/
 scp textures\*.jpg pi@raspberrypi.local:~/hemisphere/textures/
 ```
 
-then on the Pi: `pkill hemisphere; cd ~/hemisphere && make && DISPLAY=:0 ./hemisphere`.
+then on the Pi: `cd ~/hemisphere && make && tools/start-hemisphere.sh --detach`.
 
 The first time, copy the whole folder instead (`scp -r hemisphere
 pi@raspberrypi.local:~/`). From Git Bash, WSL or Linux, `./deploy.sh` does
-all of this in one go, and only copies settings files the Pi doesn't
-already have. Tell it where your Pi is:
-`PI=me@my-pi DEST=/home/me/hemisphere ./deploy.sh`.
+all of this in one go: it copies the files (only copying settings files the
+Pi doesn't already have), builds, and starts Hemisphere again in the
+background, the same way it starts at boot (see "Running on its own"), so
+it keeps running when the SSH session ends. Tell it where your Pi is:
+`PI=me@my-pi DEST=/home/me/hemisphere ./deploy.sh`. If the Pi lost power
+part way through a build, `deploy.sh` also clears out the empty files that
+leaves behind, which `make` would otherwise take as up to date.
 
-Run it in the foreground in your SSH session while adjusting anything. It
-prints each setting as you change it, and you can press keys right there in
-the SSH window. Press **S** to save and **q** to quit. Quitting does not
-save. It starts on the Death Star; press **G** for the calibration grids,
-and **H** for a list of keys.
+To adjust settings, stop the background copy first
+(`~/hemisphere/tools/start-hemisphere.sh --stop`), then run
+`cd ~/hemisphere && DISPLAY=:0 ./hemisphere` in the foreground in your SSH
+session. It prints each setting as you change it, and you can press keys
+right there in the SSH window. Press **S** to save and **q** to quit.
+Quitting does not save. It starts on the Death Star; press **G** for the
+calibration grids, and **H** for a list of keys. When you're done,
+`tools/start-hemisphere.sh --detach` sets it running in the background
+again.
 
 ## How it draws
 
@@ -763,33 +772,43 @@ systemctl status hemisphere-remote orbitfeed --no-pager
 ```
 
 **Hemisphere with the desktop.** Raspberry Pi OS's labwc desktop runs the
-commands in `~/.config/labwc/autostart` when it logs in. Check what's
-already there, then add Hemisphere:
+commands in `~/.config/labwc/autostart` when it logs in. Hemisphere starts
+from there through `tools/start-hemisphere.sh`, which waits until the
+desktop's display is ready, restarts Hemisphere if it ever stops, and logs
+to `~/hemisphere/hemisphere.log` (the run before is kept as
+`hemisphere.log.1`). No sudo is needed. Check what's already there, take
+out any older Hemisphere line, then add it:
 
 ```bash
 cat ~/.config/labwc/autostart 2>/dev/null
 mkdir -p ~/.config/labwc
-echo "sh -c \"sleep 5; cd $HOME/hemisphere && DISPLAY=:0 ./hemisphere > /tmp/hemisphere.log 2>&1\" &" >> ~/.config/labwc/autostart
+echo "bash $HOME/hemisphere/tools/start-hemisphere.sh &" >> ~/.config/labwc/autostart
 ```
 
 The Pi needs to log in to the desktop by itself at boot (`sudo raspi-config`,
 System Options, Boot / Auto Login, Desktop Autologin).
 
 **Start it now without rebooting**, so it keeps running after you close
-the SSH session:
+the SSH session (`deploy.sh` does this for you after each build):
 
 ```bash
-cd ~/hemisphere && DISPLAY=:0 nohup ./hemisphere > /tmp/hemisphere.log 2>&1 &
+~/hemisphere/tools/start-hemisphere.sh --detach
 ```
 
 **Living with it:**
 
 * Keys typed over SSH only reach Hemisphere when you started it in that
   SSH session. Running on its own, use the web remote instead. For a long
-  keyboard session, such as calibrating, run `pkill hemisphere` and start
-  it in the foreground in SSH as before.
-* `cat /tmp/hemisphere.log` shows what Hemisphere printed, if something
-  seems wrong.
+  keyboard session, such as calibrating, run
+  `~/hemisphere/tools/start-hemisphere.sh --stop` (a plain `pkill
+  hemisphere` only makes it restart) and start it in the foreground in SSH
+  as before; `--detach` puts it back in the background afterwards.
+* `cat ~/hemisphere/hemisphere.log` shows what Hemisphere printed, if
+  something seems wrong. If it says `./hemisphere is missing or empty`, a
+  build was cut short: run `make` again, or `deploy.sh`.
+* If the Pi resets or freezes during a build, check its power supply:
+  `vcgencmd get_throttled` showing anything other than `throttled=0x0`
+  means it has run short of power. Use a 5.1 V 2.5 A supply.
 * To stop it starting at boot, delete its line from
   `~/.config/labwc/autostart`; for the services, `sudo systemctl disable
   --now hemisphere-remote orbitfeed`.
