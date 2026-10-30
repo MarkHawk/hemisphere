@@ -23,7 +23,7 @@ EXE     = hemisphere
 LDLIBS += $(shell $(SDL2_CONFIG) --libs) -lGLESv2 -lm
 endif
 
-SRC = main.c dome/dome.c dome/glload.c dome/text.c \
+SRC = main.c dome/dome.c dome/glload.c dome/text.c dome/audio.c \
       scenes/deathstar.c scenes/planet.c scenes/plasma.c \
       scenes/julia.c scenes/kaleido.c scenes/life.c \
       scenes/moon.c scenes/orbit.c scenes/groovy.c \
@@ -44,6 +44,7 @@ HDR = dome/dome.h dome/glload.h
 dome/dome.o: dome/dome.c $(HDR) dome/shaders.h
 dome/glload.o: dome/glload.c dome/glload.h
 dome/text.o: dome/text.c $(HDR) dome/font5x7.h
+dome/audio.o: dome/audio.c dome/audio.h
 main.o scenes/deathstar.o scenes/plasma.o scenes/julia.o \
 scenes/kaleido.o scenes/life.o scenes/moon.o scenes/orbit.o \
 scenes/groovy.o scenes/scifi.o scenes/hypno.o \
