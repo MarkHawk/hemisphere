@@ -40,7 +40,7 @@ ifdef WIN
 	    echo "Copy SDL2.dll next to hemisphere.exe"
 endif
 
-HDR = dome/dome.h dome/glload.h
+HDR = dome/dome.h dome/glload.h dome/audio.h
 dome/dome.o: dome/dome.c $(HDR) dome/shaders.h
 dome/glload.o: dome/glload.c dome/glload.h
 dome/text.o: dome/text.c $(HDR) dome/font5x7.h

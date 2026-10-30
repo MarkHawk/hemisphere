@@ -690,6 +690,20 @@ void dome_surface_begin(GLuint prog, const DomeFrame *f)
     g_surface_alpha = f->fade;
 }
 
+void dome_audio_uniforms(GLuint prog, const DomeFrame *f, float on)
+{
+    const Audio *a = &f->audio;
+    on = on < 0.0f ? 0.0f : on > 1.0f ? 1.0f : on;
+    glUniform1f(glGetUniformLocation(prog, "u_bass"),  a->bass * on);
+    glUniform1f(glGetUniformLocation(prog, "u_body"),  a->body * on);
+    glUniform1f(glGetUniformLocation(prog, "u_mid"),   a->mid * on);
+    glUniform1f(glGetUniformLocation(prog, "u_air"),   a->air * on);
+    glUniform1f(glGetUniformLocation(prog, "u_level"), a->level * on);
+    glUniform1f(glGetUniformLocation(prog, "u_beat"),  a->beat * on);
+    glUniform1f(glGetUniformLocation(prog, "u_phase"), a->phase);
+    glUniform1f(glGetUniformLocation(prog, "u_live"),  a->live * on);
+}
+
 void dome_surface_end(void)
 {
     glBindBuffer(GL_ARRAY_BUFFER, g_quad_vbo);
@@ -972,6 +986,7 @@ static void print_help(void)
 static ctl_sock g_ctl = CTL_NONE;
 static int   g_ctl_mode = -99;           /* scene requested by the remote */
 static float g_fps;
+static Audio g_audio;                    /* the music, updated every frame */
 
 static void ctl_init(void)
 {
@@ -1041,7 +1056,12 @@ static void ctl_state(Buf *o, int mode, int paused)
     bput(o, ",\"paused\":%d,\"fps\":%.1f", paused, g_fps);
     struct stat st;
     long feed = stat(dome_path("data/sats.txt"), &st) == 0 ? (long)(time(NULL) - st.st_mtime) : -1;
-    bput(o, ",\"feed_age\":%ld,\"scenes\":[", feed);
+    const Audio *au = &g_audio;
+    bput(o, ",\"feed_age\":%ld,\"audio\":{\"bass\":%.2f,\"body\":%.2f,\"mid\":%.2f,"
+         "\"air\":%.2f,\"level\":%.2f,\"beat\":%.2f,\"bpm\":%.1f,\"live\":%.2f,\"pps\":%d}",
+         feed, au->bass, au->body, au->mid, au->air, au->level, au->beat, au->bpm,
+         au->live, au->pps);
+    bput(o, ",\"scenes\":[");
     for (int i = 0; i < g_nscenes; i++) { if (i) bput(o, ","); bstr(o, g_scenes[i]->name); }
     bput(o, "],\"params\":[");
     for (int i = 0; i < g_group_n[grp]; i++) {
@@ -1286,6 +1306,15 @@ int dome_run(int argc, char **argv, const char *title,
     grids_build();
     for (int i = 0; i < nscenes; i++) if (scenes[i]->init) scenes[i]->init();
     ctl_init();
+    {   /* sound from WLED audio sync: DOME_AUDIO_PORT=0 turns it off */
+        const char *pe = getenv("DOME_AUDIO_PORT"), *ge = getenv("DOME_AUDIO_GROUP");
+        int port = pe ? atoi(pe) : 11988;
+        const char *group = ge ? ge : "239.0.0.1";
+        if (port > 0) {
+            if (audio_open(port, group) == 0) printf("Audio: listening on %s:%d\n", group, port);
+            else printf("Audio: %s, no sound\n", audio_error());
+        }
+    }
 
     /* mode: -2 lens grid, -1 globe grid, 0..n-1 scenes. Start on the
      * first scene; calibration is a one-off job. */
@@ -1298,6 +1327,7 @@ int dome_run(int argc, char **argv, const char *title,
     float last_t = 0;
     int frames = 0; float fps_t = 0;
     int frames2 = 0; float fps2_t = 0;
+    float audio_t = 0;
 
 #define GROUP() (mode < 0 ? 0 : mode + 1)
 
@@ -1442,6 +1472,15 @@ int dome_run(int argc, char **argv, const char *title,
         float now = (SDL_GetTicks() - start_ms) / 1000.0f;
         float dt = now - last_t; last_t = now;
         if (!paused) spin += (2.0f * PI / g_view.rev_secs) * dt;
+        audio_update(&g_audio, now, dt);         /* even when paused */
+        if (getenv("DOME_AUDIO_DEBUG") && now - audio_t >= 0.5f) {
+            const Audio *a = &g_audio;
+            printf("audio  bass %.2f body %.2f mid %.2f air %.2f  beat %.2f  %5.1f bpm  "
+                   "live %.2f  %d pkt/s\n", a->bass, a->body, a->mid, a->air, a->beat,
+                   a->bpm, a->live, a->pps);
+            fflush(stdout);
+            audio_t = now;
+        }
 
         /* rebuild the lens lookup whenever calibration or res changes */
         if (memcmp(&g_map_cal, &g_cal, sizeof g_cal) || g_map_res != g_view.res)
@@ -1451,6 +1490,7 @@ int dome_run(int argc, char **argv, const char *title,
         f.now = now; f.dt = dt; f.spin = spin;
         f.fade = now < 2.0f ? now / 2.0f : 1.0f;
         f.width = g_view_w; f.height = g_view_h;
+        f.audio = g_audio;
         dome_rot_at(&f, spin, f.rot);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1506,6 +1546,7 @@ int dome_run(int argc, char **argv, const char *title,
     }
 
     tty_restore();
+    audio_close();
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();

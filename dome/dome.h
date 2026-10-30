@@ -41,6 +41,7 @@
 
 #include <SDL2/SDL.h>
 #include "glload.h"          /* OpenGL ES 2.0, on the Pi and on Windows */
+#include "audio.h"           /* sound from WLED audio sync               */
 
 #define DOME_PI        3.14159265358979f
 #define DEG2RAD(d)     ((d) * DOME_PI / 180.0f)
@@ -71,6 +72,7 @@ typedef struct {
     float fade;               /* 0 -> 1 over the first two seconds       */
     mat3  rot;                /* model -> dome rotation for this frame   */
     int   width, height;      /* drawable size in pixels                 */
+    Audio audio;              /* the music, all 0 when there is none     */
 } DomeFrame;
 
 /* rotation for this frame at a different spin angle (motion trails) */
@@ -140,6 +142,18 @@ GLuint dome_surface_program_themed(const char *scene_glsl);
  * between begin and end. end() renders and composites to the screen. */
 void dome_surface_begin(GLuint prog, const DomeFrame *f);
 void dome_surface_end(void);
+
+/* ---- sound ------------------------------------------------------- */
+/* Any scene can react to music (see audio.h for what the values mean).
+ * Give it an "audio" setting, 0 off (the default) and 1 on, and between
+ * dome_surface_begin and end call
+ *     dome_audio_uniforms(prog, f, L.audio);
+ * which sets whichever of these the scene's GLSL declares, each times on:
+ *     uniform float u_bass, u_body, u_mid, u_air, u_level, u_beat,
+ *                   u_phase, u_live;
+ * Never let a beat flash the screen: use it for sizes, positions and
+ * local glows, and ease anything that changes a lot. */
+void dome_audio_uniforms(GLuint prog, const DomeFrame *f, float on);
 
 /* ---- text -------------------------------------------------------- */
 /* Dot-matrix text along an arc round the dome centre, in DOME space: draw
