@@ -58,7 +58,7 @@ rest are on `,` and `.` and the web remote.
 | , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
 | , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
 | , and . | Eyes | One big eye filling the dome, looking round the room, blinking, its pupil opening and closing: brown, blue, green and hazel human eyes, a cat, an owl, a reptile, and an original fire eye of glowing embers in an obsidian eyeball |
-| , and . | Music | Built for sound from your WLED lights (see "Sound from WLED"): a spectrum ring round the rim, a pulse globe that swells with the bass and the beat, ripples sent out by snare hits, a starfield that speeds up with the bass, and swaying aurora curtains. With no music each style idles calmly |
+| , and . | Music | Built for sound from your WLED lights (see "Sound from WLED"): 21 styles: spectra, rings, ripples, a starfield, aurora, oscilloscope and Lissajous figures, a wire tunnel and a spectrum landscape, particle bursts, a galaxy, rain, fireworks, an 8-bit analyser, plasma, a kaleidoscope, liquid light and a ring of fire. With no music each style idles calmly |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -512,21 +512,41 @@ wider and narrower. The fire eye is an original design: a round pupil in an
 iris of streaming embers, an obsidian eyeball with lava veins, dark rock
 with glowing seams for lids, heat shimmer and rising sparks.
 
-**Music settings:** `style` (**N**: 0 spectrum ring, 1 pulse globe, 2
-ripples, 3 starfield, 4 aurora), `audio` (1, the default here,
-reacts to music from your WLED lights; 0 shows only the calm idle),
-`react` (how strongly it responds), `speed`, `theme` (**M**: the eight
-shared colour themes), `bright`. The spectrum ring stands 16 bars in from
-the rim, bass at the bottom and treble at the top; loud bass reaches
-nearly to the middle. The pulse globe swells
-with the bass and the beat and its halo follows the treble. In ripples,
-each snare hit sends a ring out from the middle. The starfield speeds up
-with the bass and stretches into streaks (its stars are dots in soft
-fixed tints; the theme colours the glow behind them). The aurora's curtains sway in
-time with the music, further when the snare is loud. With no music every
-style idles slowly, and the change between the two is eased over about a
-second. Nothing flashes: beats swell, move and light small areas, and
-sound changes the overall brightness by 15% at most.
+**Music settings:** `style` (**N**, 21 styles, listed below), `audio` (1,
+the default here, reacts to music from your WLED lights; 0 shows only the
+calm idle), `react` (how strongly it responds), `speed`, `theme` (**M**:
+the eight shared colour themes), `bright`. Every style has a slow idle of
+its own for when no music is playing, and the change between the two is
+eased over about a second. Nothing flashes: beats swell, move and light
+small areas, and sound changes the overall brightness by 15% at most.
+
+| Style | What it shows |
+|-------|---------------|
+| 0 spectrum ring | 16 bars standing in from the rim, bass at the bottom and treble at the top; loud bass reaches nearly to the middle |
+| 1 pulse globe | A glowing ball in the middle swelling with the bass and the beat, its halo following the treble |
+| 2 ripples | Each snare hit sends a ring out from the middle |
+| 3 starfield | Stars streaming out from the middle, faster with the bass, stretching into streaks (the stars are soft fixed tints; the theme colours the glow behind them) |
+| 4 aurora | Curtains of light across the top, swaying in time, further when the snare is loud |
+| 5 radial bars | 64 thin bars standing out from the middle, their tips glowing a little more on the beat |
+| 6 oscilloscope | A trace round the rim in which every band drives its own ripple, bass long and slow, treble fine and fast, with fading after-images (WLED sends no waveform, so the trace is made from the levels) |
+| 7 Lissajous | A turning figure, a quarter turn a beat, sized by the bass, morphing to a new shape every 20 seconds |
+| 8 wire tunnel | Rings flying out of the middle on the bass, bending with it and bulging on the beat |
+| 9 terrain | A wireframe landscape below the horizon, each row a spectrum as it played, scrolling towards you |
+| 10 bursts | Each beat sends a ring of particles out from the middle |
+| 11 dot globe | A sphere of dots turning with the globe, breathing with the bass, warming with the treble |
+| 12 galaxy | Two spiral arms spinning with the tempo, the core glowing with the bass |
+| 13 rain | Streaks falling faster and thicker with the treble, splashing at the bottom rim |
+| 14 fireworks | Beats launch shells that burst into drifting sparks |
+| 15 8-bit spectrum | Chunky LED columns with peak caps that drop slowly |
+| 16 bass plasma | A flowing colour field, faster with the bass |
+| 17 kaleidoscope | Six mirrored folds turning slowly, the zoom breathing on the beat |
+| 18 colour tunnel | Flying down a tunnel of colour on the bass |
+| 19 liquid light | Five soft blobs of coloured oil, mixing where they meet, moving with the snare body |
+| 20 fire ring | Flames rising from the rim, each part burning with its own band, flaring with the bass and throwing sparks on beats; embers when idle (fire keeps its own colours) |
+
+Every style holds 60 frames a second on a Pi 3. Each has its own small
+shader, the costly maths is baked into textures or worked out once a
+frame on the CPU, and lines and particles are dots.
 
 **Weather settings:** `style` (**N**: 0 live clouds, 1 infrared, 2 over
 home, 3 aurora, 4 storms), `speed` (the drift and shimmer), `home_lat` and
