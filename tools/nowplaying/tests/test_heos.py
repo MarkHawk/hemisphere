@@ -168,3 +168,17 @@ def test_discover_on_loopback():
     threading.Thread(target=answer, daemon=True).start()
     assert heos.discover(1.0, target=resp.getsockname()) == ["127.0.0.1"]
     resp.close()
+
+
+def test_recorded_amp_phono_stopped(fixtures):
+    """A real amp's answers (anonymised): phono selected, nothing playing."""
+    import switcher
+    rows = [json.loads(l) for l in (fixtures / "recorded_phono_stopped.jsonl").read_text().splitlines()]
+    sent = [r["line"] for r in rows if r["direction"] == "sent"]
+    assert all(s.split("?")[0][7:] in heos.ALLOWED for s in sent)       # read only
+    got = [r["line"] for r in rows if r["direction"] == "received"]
+    media = next(g["payload"] for g in got if g["heos"]["command"] == "player/get_now_playing_media")
+    state = next(heos.parse_message(g["heos"]["message"])["state"] for g in got
+                 if g["heos"]["command"] == "player/get_play_state")
+    assert state == "stop"
+    assert switcher.classify(media, switcher.load_config())[:3] == ("record", "phono", True)

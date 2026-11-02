@@ -1,0 +1,28 @@
+{"direction": "sent", "line": "heos://system/register_for_change_events?enable=on"}
+{"direction": "received", "line": {"heos": {"command": "system/register_for_change_events", "result": "success", "message": "enable=on"}}}
+{"direction": "sent", "line": "heos://player/get_players"}
+{"direction": "received", "line": {"heos": {"command": "player/get_players", "result": "success", "message": ""}, "payload": [{"name": "Test Amp", "pid": 1234567, "model": "Test Model", "version": "3.139.173", "ip": "192.0.2.10", "network": "test-network", "lineout": 0, "serial": "TEST0000000"}]}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "Test Amp - Phono", "station": "Test Amp - Phono", "album": "", "artist": "", "image_url": "", "album_id": "inputs/", "mid": "inputs/phono", "qid": 1, "sid": 1027}, "options": []}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}

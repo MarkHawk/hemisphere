@@ -1,1 +1,1 @@
-These are made-up samples in the shape the HEOS CLI spec gives (names, pid, ip and serial are placeholders). Recordings from a real amp are added next to them, scrubbed the same way.
+sample_session.jsonl is made up, in the shape the HEOS CLI spec gives (names, pid, ip and serial are placeholders). recorded_*.jsonl were recorded from a real amp with nowplaying.py --record: player name, address, serial, model, network and account details are replaced with the same placeholders, and each file was scanned for the real values (all not found) before it was committed.
