@@ -71,7 +71,7 @@ def run(sw, dome, t0, t1, playing, behaviour, step=1.0):
     ({"sid": 1027, "mid": "inputs/phono", "type": "station"}, "record"),
     ({"sid": 1027, "mid": "inputs/coax_in_1", "type": "station"}, "disc"),
     ({"sid": 1027, "mid": "inputs/optical_in_1", "type": "station"}, "default"),
-    ({"sid": 1027, "mid": "inputs/cd", "type": "station"}, "default"),
+    ({"sid": 1027, "mid": "inputs/cd", "type": "station"}, "disc"),
     ({"sid": 1027, "mid": "inputs/aux_in_1", "type": "station"}, "default"),
     ({"sid": 4, "mid": "spotify:track:x", "type": "song"}, "album"),
     ({"sid": 3, "mid": "s1234", "type": "station"}, "radio"),

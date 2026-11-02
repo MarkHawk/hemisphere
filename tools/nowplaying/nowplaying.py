@@ -48,7 +48,7 @@ import time
 import art
 import heos
 from domectl import Dome
-from switcher import SHOWS, Switcher, classify, load_config
+from switcher import SHOWS, Switcher, classify, input_label, load_config
 
 HERE = pathlib.Path(__file__).resolve().parent
 KEEP_PALETTE = {"disc"}        # no cover expected: keep the colours there are
@@ -107,7 +107,11 @@ class NowPlaying:
 
     # ---- what is playing ------------------------------------------
     def title_of(self, m):
-        """The title to show; inputs come as '<player> - Phono'."""
+        """The title to show; inputs come as '<player> - Coaxial In' and
+        are shown by their label ("CD") or without the player's name."""
+        label = input_label(m, self.cfg)
+        if label:
+            return label
         song = "" if is_stream_info(m.get("song")) else m.get("song")
         t = song or m.get("station") or ""
         if self.player_name and t.startswith(self.player_name + " - "):
@@ -142,6 +146,7 @@ class NowPlaying:
             station = ""
         if self.player_name and station.startswith(self.player_name + " - "):
             station = station[len(self.player_name) + 3:]
+        station = input_label(m, self.cfg) or station
         if self.behaviour == "radio":
             station = self.remember_station(m, station)
         self.next = self.read_next()

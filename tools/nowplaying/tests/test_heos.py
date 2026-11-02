@@ -181,7 +181,7 @@ def test_recorded_amp_phono_stopped(fixtures):
     state = next(heos.parse_message(g["heos"]["message"])["state"] for g in got
                  if g["heos"]["command"] == "player/get_play_state")
     assert state == "stop"
-    assert switcher.classify(media, switcher.load_config())[:3] == ("record", "phono", True)
+    assert switcher.classify(media, switcher.load_config())[:3] == ("record", "Phono", True)
 
 
 def test_recorded_amp_every_source(fixtures):
@@ -194,7 +194,7 @@ def test_recorded_amp_every_source(fixtures):
     got = [r["line"] for r in rows if r["direction"] == "received"]
     media = [g["payload"] for g in got if g["heos"]["command"] == "player/get_now_playing_media"]
     seen = {switcher.classify(m, cfg)[1]: switcher.classify(m, cfg)[0] for m in media}
-    assert seen == {"Spotify": "album", "phono": "record", "CD (coaxial)": "disc",
+    assert seen == {"Spotify": "album", "Phono": "record", "CD": "disc",
                     "TuneIn": "radio"}
     states = {heos.parse_message(g["heos"]["message"]).get("state") for g in got
               if g["heos"]["command"] == "event/player_state_changed"}

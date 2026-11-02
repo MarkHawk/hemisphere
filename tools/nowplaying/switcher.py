@@ -64,6 +64,19 @@ def classify(media, cfg):
     return cfg.get("unknown", "default"), "unknown", False
 
 
+def input_label(media, cfg):
+    """The dome's name for an input ("Phono", "CD"), from its rule's
+    label; None for anything else, or an input without one."""
+    media = media or {}
+    mid = str(media.get("mid") or "").lower()
+    if not mid.startswith("inputs/"):
+        return None
+    for r in cfg.get("rules", []):
+        if "mid_prefix" in r and mid.startswith(r["mid_prefix"].lower()):
+            return r.get("label")
+    return None
+
+
 class Switcher:
     def __init__(self, dome, cfg, log=print):
         self.dome = dome

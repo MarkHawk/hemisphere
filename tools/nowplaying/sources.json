@@ -2,6 +2,7 @@
   "_about": [
     "How tools/nowplaying treats each HEOS source. Rules are tried in turn and the first that matches wins: sid is the HEOS source number, mid_prefix the start of the media id (inputs are 'inputs/<name>'), type 'song' or 'station'.",
     "Behaviours: album (show the cover), radio (station art if there is any), record (the record planet, no cover needed), disc (a CD: no cover or progress expected, keeps the current colours), default (show whatever there is), release (give the dome back after release_seconds), off (leave the dome alone).",
+    "label: what an input is called on the dome, in place of the amp's own '<player> - Coaxial In'.",
     "audio_means_playing: for inputs where the amp cannot tell if music is playing (a turntable), sound from the WLED audio sync counts as playing.",
     "while_showing: settings a scene takes while the music has the dome (Music uses theme 8, album: the cover's colours); the old values come back when it hands back.",
     "Your own changes: copy this file, edit it, and pass it with --config."
@@ -14,9 +15,9 @@
   "scenes": ["NOW PLAYING", "MUSIC"],
   "while_showing": {"MUSIC": {"theme": 8}},
   "rules": [
-    {"mid_prefix": "inputs/phono", "name": "phono", "behaviour": "record", "audio_means_playing": true},
-    {"mid_prefix": "inputs/coax", "name": "CD (coaxial)", "behaviour": "disc", "audio_means_playing": true},
-    {"mid_prefix": "inputs/cd", "name": "CD", "behaviour": "default", "audio_means_playing": true},
+    {"mid_prefix": "inputs/phono", "name": "Phono", "label": "Phono", "behaviour": "record", "audio_means_playing": true},
+    {"mid_prefix": "inputs/coax", "name": "CD", "label": "CD", "behaviour": "disc", "audio_means_playing": true},
+    {"mid_prefix": "inputs/cd", "name": "CD", "label": "CD", "behaviour": "disc", "audio_means_playing": true},
     {"mid_prefix": "inputs/", "name": "analogue in", "behaviour": "default", "audio_means_playing": true},
     {"sid": 3, "name": "TuneIn", "behaviour": "radio"},
     {"sid": 7, "name": "iHeartRadio", "behaviour": "radio"},

@@ -262,3 +262,19 @@ def test_next_up():
     assert nowplaying.next_up(q, "2") == "C - Z"
     assert nowplaying.next_up(q, 3) == ""
     assert nowplaying.next_up([], 1) == ""
+
+
+def test_inputs_are_shown_by_their_labels(rig):
+    amp, covers, hemi, np, stop, data, logs = rig
+    np.player_name = "Test Amp"
+    np.take_media({"type": "station", "song": "Test Amp - Coaxial In",
+                   "station": "Test Amp - Coaxial In", "mid": "inputs/coax_in_1", "sid": 1027})
+    now = (data / "now.txt").read_text()
+    assert "title=CD" in now and "station=CD" in now and "source=CD" in now
+    np.take_media({"type": "station", "song": "Test Amp - Phono", "station": "Test Amp - Phono",
+                   "mid": "inputs/phono", "sid": 1027})
+    now = (data / "now.txt").read_text()
+    assert "title=Phono" in now and "station=Phono" in now
+    np.take_media({"type": "station", "song": "Test Amp - Line In 2", "station": "Test Amp - Line In 2",
+                   "mid": "inputs/line_in_2", "sid": 1027})
+    assert "title=Line In 2" in (data / "now.txt").read_text()      # no label: the amp's name
