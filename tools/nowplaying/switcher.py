@@ -8,8 +8,12 @@ in sources.json. Switcher decides when to change scene:
                changed the scene by hand (key or remote) in the last
                hold_minutes, and no calibration grid is up. The scene it
                replaced, and that scene's style, are remembered. Settings
-               in while_showing (Music's theme 8, album) are set, and put
-               back when it hands back.
+               in while_showing (Music's theme 8, album) and the style in
+               styles for the source (Now playing: the record planet for
+               phono and CD, the album globe for the rest) are set, and
+               put back when it hands back. If the source changes while
+               it has the dome, the style follows; a style picked by hand
+               is otherwise left alone.
   hand back    paused or stopped for idle_minutes (or on a release
                source, such as TV, for release_seconds): the scene and
                style it replaced come back, labelled "auto", so the
@@ -89,6 +93,9 @@ class Switcher:
         # settings to use while the music has the dome, per scene name,
         # put back as they were when it hands back
         self.while_showing = {k.upper(): v for k, v in cfg.get("while_showing", {}).items()}
+        # the style a scene takes for each behaviour (Now playing: the
+        # record planet for phono and CD, the album globe for the rest)
+        self.styles = {k.upper(): v for k, v in cfg.get("styles", {}).items()}
         self.log = log
         self.taken = None            # what we replaced, while we hold the dome
         self.play_since = None
@@ -120,7 +127,9 @@ class Switcher:
             elif (not self.stood_down and now - self.play_since >= self.settle
                   and now >= self.next_check):
                 self.next_check = now + 5.0      # not every second while waiting
-                self._take(now)
+                self._take(now, behaviour)
+            if self.taken and behaviour != self.taken.get("behaviour"):
+                self._new_source(behaviour)
             return
         self.play_since = None
         if self.quiet_since is None:
@@ -143,6 +152,26 @@ class Switcher:
             self.taken = None
             self.stood_down = True
 
+    def _todo(self, name, behaviour):
+        """The settings to give scene `name` while showing `behaviour`."""
+        todo = dict(self.while_showing.get(name.upper(), {}))
+        style = self.styles.get(name.upper(), {}).get(behaviour)
+        if style is not None:
+            todo["style"] = style
+        return todo
+
+    def _new_source(self, behaviour):
+        """The source changed while the music has the dome: its style."""
+        t = self.taken
+        t["behaviour"] = behaviour
+        style = self.styles.get(t.get("name", "").upper(), {}).get(behaviour)
+        if style is None:
+            return
+        if t.get("todo"):
+            t["todo"]["style"] = style           # not switched yet: set it then
+        else:
+            self.dome.sset(t["target"], "style", float(style))
+
     def _target(self, st):
         scenes = [str(s).upper() for s in st.get("scenes", [])]
         for name in self.names:
@@ -150,7 +179,7 @@ class Switcher:
                 return scenes.index(name)
         return None
 
-    def _take(self, now):
+    def _take(self, now, behaviour=None):
         st = self.dome.state()
         if st is None:
             self._say("Hemisphere is not answering; will try again")
@@ -170,8 +199,8 @@ class Switcher:
             return
         if target == scene and by == BY:     # ours from before a restart
             self.taken = {"scene": None, "by": None, "pick": None, "target": target,
-                          "todo": dict(self.while_showing.get(st["scenes"][target].upper(), {})),
-                          "saved": {}}
+                          "todo": self._todo(st["scenes"][target], behaviour), "saved": {},
+                          "name": st["scenes"][target], "behaviour": behaviour}
             return
         if target == scene:
             self._say("Already showing the music scene")
@@ -188,8 +217,8 @@ class Switcher:
         if self.dome.scene(target, BY) is None:
             return
         self.taken = {"scene": scene, "by": by, "pick": pick, "target": target,
-                      "todo": dict(self.while_showing.get(st["scenes"][target].upper(), {})),
-                      "saved": {}}
+                      "todo": self._todo(st["scenes"][target], behaviour), "saved": {},
+                      "name": st["scenes"][target], "behaviour": behaviour}
         self.next_check = now + 5.0
         self._say(f"Music playing: showing {st['scenes'][target]}")
 

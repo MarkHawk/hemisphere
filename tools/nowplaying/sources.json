@@ -5,6 +5,7 @@
     "label: what an input is called on the dome, in place of the amp's own '<player> - Coaxial In'.",
     "audio_means_playing: for inputs where the amp cannot tell if music is playing (a turntable), sound from the WLED audio sync counts as playing.",
     "while_showing: settings a scene takes while the music has the dome (Music uses theme 8, album: the cover's colours); the old values come back when it hands back.",
+    "styles: the style a scene shows for each behaviour (Now playing: 0 album globe, 1 record planet, which is a CD for a disc); it follows the source while the music has the dome.",
     "Your own changes: copy this file, edit it, and pass it with --config."
   ],
   "auto": true,
@@ -14,6 +15,7 @@
   "settle_seconds": 3,
   "scenes": ["NOW PLAYING", "MUSIC"],
   "while_showing": {"MUSIC": {"theme": 8}},
+  "styles": {"NOW PLAYING": {"album": 0, "radio": 0, "default": 0, "record": 1, "disc": 1}},
   "rules": [
     {"mid_prefix": "inputs/phono", "name": "Phono", "label": "Phono", "behaviour": "record", "audio_means_playing": true},
     {"mid_prefix": "inputs/coax", "name": "CD", "label": "CD", "behaviour": "disc", "audio_means_playing": true},

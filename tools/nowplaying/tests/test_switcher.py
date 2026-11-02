@@ -244,3 +244,47 @@ def test_after_a_restart_still_sets_the_theme(cfg):
     assert dome.sent == [f"sset {MUSIC} theme 8"]
     run(sw, dome, 11, 400, False, "album")
     assert dome.music["theme"] == 8.0 or dome.sent[-1] == f"sset {MUSIC} theme 2"
+
+
+class NowPlayingDome(FakeDome):
+    """A dome with a Now playing scene (4) whose style we can watch."""
+    SC = ["DEATH STAR", "PLANET", "HYPNOTIC", "MUSIC", "NOW PLAYING"]
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.np = {"style": 3.0, "theme": 8.0}
+
+    def state(self):
+        st = super().state()
+        if st is None:
+            return None
+        st["scenes"] = self.SC
+        if self.scene_n == 4:
+            st["params"] = [{"name": k, "group": "scene", "value": v} for k, v in self.np.items()]
+        return st
+
+    def catalog(self):
+        return {"scenes": [{"name": n} for n in self.SC]}
+
+    def sset(self, scene, name, value):
+        super().sset(scene, name, value)
+        if scene == 4:
+            self.np[name] = value
+
+
+def test_style_follows_the_source(cfg):
+    dome = NowPlayingDome(scene=1)
+    sw = Switcher(dome, cfg, log=lambda s: None)
+    run(sw, dome, 0, 6, True, "record")                       # phono starts
+    assert scenes(dome) == ["scene 4 nowplaying"]
+    assert dome.np["style"] == 1.0                             # the record planet
+    run(sw, dome, 7, 9, True, "album")                         # over to Spotify
+    assert dome.np["style"] == 0.0                             # the album globe
+    run(sw, dome, 10, 12, True, "disc")                        # the CD on coax
+    assert dome.np["style"] == 1.0
+    dome.np["style"] = 4.0                                     # picked by hand
+    run(sw, dome, 13, 20, True, "disc")
+    assert dome.np["style"] == 4.0                             # left alone
+    run(sw, dome, 21, 400, False, "disc")                      # stops: hands back
+    assert scenes(dome)[-1] == "scene 1 auto"
+    assert dome.np["style"] == 3.0                             # as it was before
