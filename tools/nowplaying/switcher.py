@@ -157,7 +157,8 @@ class Switcher:
             return
         if target == scene and by == BY:     # ours from before a restart
             self.taken = {"scene": None, "by": None, "pick": None, "target": target,
-                          "todo": {}, "saved": {}}
+                          "todo": dict(self.while_showing.get(st["scenes"][target].upper(), {})),
+                          "saved": {}}
             return
         if target == scene:
             self._say("Already showing the music scene")

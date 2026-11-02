@@ -83,7 +83,8 @@ def rig(tmp_path):
 
 
 def song(covers, n):
-    return {"type": "song", "song": f"Track {n}", "artist": "The Testers", "album": "Fixtures",
+    return {"type": "song", "song": f"Track {n}", "station": f"Track {n}",   # as HEOS does
+            "artist": "The Testers", "album": "Fixtures",
             "image_url": covers.url(f"/cover/{n}.png"), "mid": f"m{n}", "sid": 4}
 
 
@@ -97,6 +98,7 @@ def test_full_cycle(rig):
     assert len((data / "art.rgba").read_bytes()) == 512 * 512 * 4
     now = (data / "now.txt").read_text()
     assert "title=Track 1" in now and "art=1" in now and "behaviour=album" in now
+    assert "station=\n" in now                    # not the song title again
     assert any(c.startswith("palette ") and c != "palette off" for c in hemi.got)
     assert hemi.wait_for(lambda: hemi.scene == 2 and hemi.by == "nowplaying")
 

@@ -85,3 +85,34 @@ def test_prune_keeps_the_newest(tmp_path):
         os.utime(p, (time.time() - 100 + i, time.time() - 100 + i))
     art.prune(tmp_path, limit=2500)
     assert sorted(p.name for p in tmp_path.glob("*.img")) == ["3.img", "4.img"]
+
+
+def _black_and_silver():
+    img = Image.new("RGB", (200, 200), (8, 8, 10))
+    d = ImageDraw.Draw(img)
+    d.ellipse([40, 40, 160, 160], fill=(150, 152, 156))        # a chrome logo
+    d.ellipse([70, 70, 130, 130], fill=(200, 202, 205))
+    return img, d
+
+
+def test_palette_of_black_and_silver_has_a_range():
+    img, _ = _black_and_silver()
+    pal = art.palette(img)
+    assert len(pal) == 4
+    pairs = [art._dist(a, b) for i, a in enumerate(pal) for b in pal[i + 1:]]
+    assert min(pairs) >= 20, pal                              # no near-copies
+    assert art._luma(pal[0]) > 140 and art._luma(pal[-1]) < 40
+
+
+def test_palette_keeps_a_small_vivid_accent():
+    img, d = _black_and_silver()
+    d.rectangle([180, 180, 189, 189], fill=(230, 20, 30))     # 0.25% red
+    pal = art.palette(img)
+    assert any(c[0] > 150 and c[1] < 90 and c[2] < 90 for c in pal), pal
+
+
+def test_palette_ignores_vivid_specks():
+    img, d = _black_and_silver()
+    d.point([(5, 5), (6, 5)], fill=(230, 20, 30))             # two pixels
+    pal = art.palette(img)
+    assert not any(c[0] > 150 and c[1] < 90 for c in pal), pal

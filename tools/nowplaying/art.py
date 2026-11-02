@@ -108,21 +108,63 @@ def _dist(a, b):
     return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
 
 
+ACCENT_MIN_SHARE = 0.003                  # about 12 pixels of the 64 x 64
+
+
+def _fill(picked, n):
+    """Too few distinct colours (a black and silver cover): add steps
+    from the lightest to the darkest, so the theme still has a range."""
+    picked = list(picked) or [(128, 128, 128)]
+    hi, lo = max(picked, key=_luma), min(picked, key=_luma)
+    if _dist(lo, hi) < 60:                    # about one colour: widen it
+        hi = tuple(min(255, int(v * 1.6 + 40)) for v in hi)
+        lo = tuple(int(v * 0.35) for v in lo)
+        for c in (hi, lo):
+            if len(picked) < n and c not in picked:
+                picked.append(c)
+    missing = n - len(picked)
+    for k in range(1, missing + 1):
+        t = k / (missing + 1)
+        picked.append(tuple(int(round(h + (l - h) * t)) for h, l in zip(hi, lo)))
+    return picked
+
+
+def _accent(small):
+    """A vivid colour the cover has, however small its area (at least
+    ACCENT_MIN_SHARE), found from the pixels themselves: reducing to a
+    few colours would blend a small one away. The most common vivid hue
+    wins; its pixels are averaged. None if there is no vivid colour."""
+    bins = {}
+    raw = small.tobytes()
+    for i in range(0, len(raw), 3):
+        rgb = (raw[i], raw[i + 1], raw[i + 2])
+        h, s, v = colorsys.rgb_to_hsv(*(x / 255 for x in rgb))
+        if s >= 0.45 and v >= 0.30:
+            bins.setdefault(int(h * 12) % 12, []).append(rgb)
+    if not bins:
+        return None
+    best = max(bins.values(), key=len)
+    if len(best) < ACCENT_MIN_SHARE * small.size[0] * small.size[1]:
+        return None
+    return tuple(int(round(sum(c[k] for c in best) / len(best))) for k in range(3))
+
+
 def palette(img, n=4):
     """n colours from a picture, brightest first, each (r, g, b) 0..255."""
     small = img.convert("RGB").resize((64, 64), Image.BILINEAR)
-    q = small.quantize(colors=8, method=Image.Quantize.MEDIANCUT)
+    q = small.quantize(colors=16, method=Image.Quantize.MEDIANCUT)
     pal = q.getpalette()
     counts = sorted(q.getcolors(), reverse=True)
     total = sum(c for c, _ in counts)
     cands = []
     for count, idx in counts:
         rgb = tuple(pal[idx * 3: idx * 3 + 3])
-        s = colorsys.rgb_to_hsv(*(v / 255 for v in rgb))[1]
+        s = colorsys.rgb_to_hsv(*(x / 255 for x in rgb))[1]
         cands.append((count / total * (0.5 + s), rgb))
     cands.sort(reverse=True)
+    accent = _accent(small)
     picked = []
-    for gap in (70, 45, 25, 0):               # relax until there are enough
+    for gap in (70, 45, 25):                  # relax, but never to near-copies
         for _, rgb in cands:
             if len(picked) == n:
                 break
@@ -130,9 +172,13 @@ def palette(img, n=4):
                 picked.append(rgb)
         if len(picked) == n:
             break
-    while len(picked) < n:                    # a one-colour picture
-        base = picked[-1] if picked else (128, 128, 128)
-        picked.append(tuple(int(v * 0.55) for v in base))
+    if accent and not any(_dist(accent, p) < 40 for p in picked):
+        if len(picked) == n:
+            picked[-1] = accent               # in place of the least important
+        else:
+            picked.append(accent)
+    if len(picked) < n:
+        picked = _fill(picked, n)
     picked.sort(key=_luma, reverse=True)
     # lift the darkest off black, keeping its hue
     out = []

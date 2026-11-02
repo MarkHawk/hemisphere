@@ -22,6 +22,7 @@ Options (environment variables in brackets):
     --player NAME        which player, by name, pid or model (HEOS_PLAYER)
     --config FILE        source rules and timings (default sources.json)
     --no-auto            never change scene, just pass the music on
+    --idle S, --hold S   override the idle and hold times, in seconds
     --dry-run            print the dome commands instead of sending them
     --once               print what is playing and stop
     --record DIR --seconds N
@@ -109,7 +110,8 @@ class NowPlaying:
                 art.prune(self.cache)
             except art.ArtError as e:
                 self.log(f"No cover: {e}")
-        station = m.get("station") or ""
+        # HEOS fills station with the song title for streamed songs
+        station = (m.get("station") or "") if m.get("type") == "station" else ""
         if self.player_name and station.startswith(self.player_name + " - "):
             station = station[len(self.player_name) + 3:]
         self.info = {"title": self.title_of(m), "artist": m.get("artist", ""),
@@ -328,6 +330,10 @@ def main(argv=None):
     ap.add_argument("--player", default=os.environ.get("HEOS_PLAYER"))
     ap.add_argument("--config", default=None)
     ap.add_argument("--no-auto", action="store_true")
+    ap.add_argument("--idle", type=float, metavar="SECONDS",
+                    help="hand the dome back after this long paused (for testing)")
+    ap.add_argument("--hold", type=float, metavar="SECONDS",
+                    help="leave the dome alone this long after a change by hand")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--record", metavar="DIR")
@@ -359,6 +365,10 @@ def main(argv=None):
             c.close()
         return 0
     cfg = load_config(args.config)
+    if args.idle is not None:
+        cfg["idle_minutes"] = args.idle / 60
+    if args.hold is not None:
+        cfg["hold_minutes"] = args.hold / 60
     dome = Dome(dry_run=args.dry_run)
     np = NowPlaying(lambda: heos.Client(*heos.split_host(host)), dome, cfg,
                     player=args.player, auto=not args.no_auto)

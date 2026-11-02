@@ -235,3 +235,12 @@ def test_prefers_now_playing_scene_when_present(cfg):
 
 def test_shows_set():
     assert switcher.SHOWS == {"album", "radio", "record", "disc", "default"}
+
+
+def test_after_a_restart_still_sets_the_theme(cfg):
+    dome = FakeDome(scene=MUSIC, by="nowplaying", since=30.0)   # ours, from before
+    sw = Switcher(dome, cfg, log=lambda s: None)
+    run(sw, dome, 0, 10, True, "album")
+    assert dome.sent == [f"sset {MUSIC} theme 8"]
+    run(sw, dome, 11, 400, False, "album")
+    assert dome.music["theme"] == 8.0 or dome.sent[-1] == f"sset {MUSIC} theme 2"
