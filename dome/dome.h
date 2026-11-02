@@ -150,6 +150,11 @@ extern const char *DOME_GLSL_NOISE;
  * The ramps are brightest at x = 0 and darkest at x = 0.5. Build the
  * program with dome_surface_program_themed(). */
 #define DOME_THEMES 8
+/* theme 8, past the shared set: the colours of the album now playing
+ * (see dome_nowplaying), a neutral palette when nothing is known. A scene
+ * opts in by letting its theme setting reach 8; dome_album_rgb gives the
+ * same ramp on the CPU. */
+#define DOME_THEME_ALBUM 8
 extern const char *DOME_GLSL_THEMES;
 extern const char *DOME_THEME_NAMES[DOME_THEMES];
 /* a surface program with DOME_GLSL_NOISE and DOME_GLSL_THEMES included */
@@ -172,6 +177,27 @@ void dome_surface_end(void);
  * Never let a beat flash the screen: use it for sizes, positions and
  * local glows, and ease anything that changes a lot. */
 void dome_audio_uniforms(GLuint prog, const DomeFrame *f, float on);
+
+/* ---- now playing ------------------------------------------------- */
+/* What the music player is doing, sent by tools/nowplaying over the
+ * control channel (the core knows nothing about the player itself).
+ * serial goes up each time new metadata and art are ready in
+ * data/nowplaying/ (now.txt and art.rgba). position runs on by itself
+ * between progress messages while playing. age is seconds since the tool
+ * last sent anything, -1 if it never has. The palette is four colours,
+ * brightest first, easing over about a second when the album changes. */
+enum { DOME_NP_STOP, DOME_NP_PAUSE, DOME_NP_PLAY };
+typedef struct {
+    int   serial;
+    int   state;               /* DOME_NP_STOP, _PAUSE or _PLAY          */
+    float position, duration;  /* seconds; duration 0 = unknown          */
+    float age;
+    int   has_palette;         /* 0 = the neutral default                */
+    float palette[4][3];
+} DomeNowPlaying;
+const DomeNowPlaying *dome_nowplaying(void);
+/* theme 8 (album) at x, cyclic, as the GLSL theme() gives it */
+void dome_album_rgb(float x, float out[3]);
 
 /* ---- text -------------------------------------------------------- */
 /* Dot-matrix text along an arc round the dome centre, in DOME space: draw

@@ -649,6 +649,7 @@ const char *DOME_THEME_NAMES[DOME_THEMES] = {
 
 /* each theme is a cheap function of x; f is a smooth 1 -> 0 -> 1 ramp */
 static const char DOME_GLSL_THEMES_SRC[] =
+    "uniform vec3 u_album[4];\n"
     "float thf(float x){ return 0.5 + 0.5 * cos(6.28318 * x); }\n"
     "vec3 theme(float id, float x){\n"
     "  float f = thf(x);\n"
@@ -666,11 +667,18 @@ static const char DOME_GLSL_THEMES_SRC[] =
     "                  mix(vec3(0.10, 1.0, 0.45), vec3(0.65, 0.25, 1.0), 0.5 + 0.5 * cos(12.566 * x + 2.0)), f * f);\n"
     "  if (id < 5.5) return vec3(1.0, 0.78, 0.30) * pow(f, 1.5) + vec3(1.0, 0.95, 0.80) * pow(f, 12.0) * 0.5;\n"
     "  if (id < 6.5) return vec3(1.0, 0.62, 0.12) * f * f;\n"
-    "  float b = fract(x + 0.0833) * 6.0, i = floor(b), e2 = min(fract(b), 1.0 - fract(b));\n"
-    "  vec3 j = i < 1.0 ? vec3(0.80, 0.05, 0.15) : i < 2.0 ? vec3(0.10, 0.25, 0.85)\n"
-    "         : i < 3.0 ? vec3(0.05, 0.65, 0.30) : i < 4.0 ? vec3(0.55, 0.15, 0.75)\n"
-    "         : i < 5.0 ? vec3(0.95, 0.65, 0.10) : vec3(0.10, 0.75, 0.75);\n"
-    "  return j * smoothstep(0.02, 0.10, e2);\n"                  /* dark leading */
+    "  if (id < 7.5) {\n"
+    "    float b = fract(x + 0.0833) * 6.0, i = floor(b), e2 = min(fract(b), 1.0 - fract(b));\n"
+    "    vec3 j = i < 1.0 ? vec3(0.80, 0.05, 0.15) : i < 2.0 ? vec3(0.10, 0.25, 0.85)\n"
+    "           : i < 3.0 ? vec3(0.05, 0.65, 0.30) : i < 4.0 ? vec3(0.55, 0.15, 0.75)\n"
+    "           : i < 5.0 ? vec3(0.95, 0.65, 0.10) : vec3(0.10, 0.75, 0.75);\n"
+    "    return j * smoothstep(0.02, 0.10, e2);\n"                /* dark leading */
+    "  }\n"
+    /* 8 album: the now-playing palette, brightest at x = 0, darkest at 0.5 */
+    "  float t = (1.0 - f) * 3.0;\n"
+    "  vec3 c = mix(u_album[0], u_album[1], clamp(t, 0.0, 1.0));\n"
+    "  c = mix(c, u_album[2], clamp(t - 1.0, 0.0, 1.0));\n"
+    "  return mix(c, u_album[3], clamp(t - 2.0, 0.0, 1.0));\n"
     "}\n";
 const char *DOME_GLSL_THEMES = DOME_GLSL_THEMES_SRC;
 
@@ -685,6 +693,8 @@ GLuint dome_surface_program_themed(const char *scene_glsl)
 }
 
 static float g_surface_alpha = 1.0f;
+
+static DomeNowPlaying g_np;              /* see the control channel */
 
 void dome_surface_begin(GLuint prog, const DomeFrame *f)
 {
@@ -701,6 +711,7 @@ void dome_surface_begin(GLuint prog, const DomeFrame *f)
     glUniform2f(U("u_size"), (float)g_map_w, (float)g_map_h);
     glUniform1f(U("u_time"), f->now);
     glUniform1f(U("u_eye"), g_view.eye);          /* viewer distance, for parallax */
+    glUniform3fv(U("u_album"), 4, &g_np.palette[0][0]);   /* theme 8 */
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_dirmap_tex);
     glUniform1i(U("u_dirmap"), 0);
@@ -995,15 +1006,94 @@ static void print_help(void)
 /*   programs on the Pi itself can reach it; the web remote in         */
 /*   tools/remote talks to it. One command per packet, one reply:      */
 /*     state               JSON: scene, settings, fps, feed age        */
-/*     scene <n>           0..scenes-1, or -2 lens grid, -1 globe grid */
+/*     scene <n> [by]      0..scenes-1, or -2 lens grid, -1 globe grid; */
+/*                         by says who asked (a word: remote, playlist, */
+/*                         nowplaying, auto...), "remote" if left out   */
 /*     key <k>             a key, as typed: n, m, c, s, space, up...   */
 /*     set <name> <value>  a setting in the current group              */
 /*     save                write all the settings files                */
+/*   and from tools/nowplaying, what the amp is playing:               */
+/*     palette RRGGBB RRGGBB RRGGBB RRGGBB   the album's colours,      */
+/*                         brightest first ("palette off" to forget)   */
+/*     np <serial>         new data/nowplaying/now.txt and art.rgba    */
+/*     progress <pos_ms> <dur_ms> <play|pause|stop>                    */
 /* ================================================================== */
 static ctl_sock g_ctl = CTL_NONE;
 static int   g_ctl_mode = -99;           /* scene requested by the remote */
+static char  g_ctl_by[16];               /*   and who asked for it        */
 static float g_fps;
 static Audio g_audio;                    /* the music, updated every frame */
+
+/* who changed the scene last, and when (SDL ticks) */
+static char   g_by[16] = "start";
+static Uint32 g_by_ms;
+
+static void set_by(const char *by)
+{
+    snprintf(g_by, sizeof g_by, "%s", by);
+    g_by_ms = SDL_GetTicks();
+}
+
+/* ---- now playing --------------------------------------------------- */
+/* the palette eases to its target over about a second, so a new album's
+ * colours fade in; with none it is a neutral warm-to-dusk set */
+static const float NP_DEFAULT[4][3] = {
+    { 0.95f, 0.82f, 0.58f }, { 0.85f, 0.48f, 0.32f },
+    { 0.38f, 0.32f, 0.62f }, { 0.10f, 0.12f, 0.26f },
+};
+static float  g_np_target[4][3];
+static Uint32 g_np_pos_ms;                /* when the last progress arrived */
+static Uint32 g_np_heard_ms;              /* when anything last arrived */
+static float  g_np_pos0;                  /* position then, seconds */
+
+static void np_init(void)
+{
+    memcpy(g_np.palette, NP_DEFAULT, sizeof NP_DEFAULT);
+    memcpy(g_np_target, NP_DEFAULT, sizeof NP_DEFAULT);
+    g_np.age = -1.0f;
+}
+
+static void np_tick(float dt)
+{
+    float k = 1.0f - expf(-dt * 3.0f);
+    for (int i = 0; i < 4; i++)
+        for (int c = 0; c < 3; c++)
+            g_np.palette[i][c] += (g_np_target[i][c] - g_np.palette[i][c]) * k;
+    Uint32 now = SDL_GetTicks();
+    float pos = g_np_pos0;
+    if (g_np.state == DOME_NP_PLAY) pos += (float)(now - g_np_pos_ms) / 1000.0f;
+    if (g_np.duration > 0 && pos > g_np.duration) pos = g_np.duration;
+    g_np.position = pos;
+    g_np.age = g_np_heard_ms ? (float)(now - g_np_heard_ms) / 1000.0f : -1.0f;
+}
+
+const DomeNowPlaying *dome_nowplaying(void) { return &g_np; }
+
+void dome_album_rgb(float x, float out[3])
+{
+    float f = 0.5f + 0.5f * cosf(6.28318f * x), t = (1.0f - f) * 3.0f;
+    for (int c = 0; c < 3; c++) {
+        float v = g_np.palette[0][c];
+        for (int i = 0; i < 3; i++) {
+            float s = t - (float)i;
+            s = s < 0.0f ? 0.0f : s > 1.0f ? 1.0f : s;
+            v += (g_np.palette[i + 1][c] - v) * s;
+        }
+        out[c] = v;
+    }
+}
+
+static int hex_rgb(const char *s, float out[3])
+{
+    if (strlen(s) != 6) return 0;
+    for (int i = 0; i < 6; i++)
+        if (!strchr("0123456789abcdefABCDEF", s[i])) return 0;
+    unsigned v = (unsigned)strtoul(s, NULL, 16);
+    out[0] = (float)((v >> 16) & 255) / 255.0f;
+    out[1] = (float)((v >> 8) & 255) / 255.0f;
+    out[2] = (float)(v & 255) / 255.0f;
+    return 1;
+}
 
 static void ctl_init(void)
 {
@@ -1078,6 +1168,19 @@ static void ctl_state(Buf *o, int mode, int paused)
          "\"air\":%.2f,\"level\":%.2f,\"beat\":%.2f,\"bpm\":%.1f,\"live\":%.2f,\"pps\":%d}",
          feed, au->bass, au->body, au->mid, au->air, au->level, au->beat, au->bpm,
          au->live, au->pps);
+    bput(o, ",\"by\":");
+    bstr(o, g_by);
+    bput(o, ",\"since\":%.1f", (float)(SDL_GetTicks() - g_by_ms) / 1000.0f);
+    const DomeNowPlaying *np = &g_np;
+    static const char *NP_STATE[3] = { "stop", "pause", "play" };
+    bput(o, ",\"nowplaying\":{\"serial\":%d,\"state\":\"%s\",\"position\":%.1f,"
+         "\"duration\":%.1f,\"age\":%.1f,\"has_palette\":%d,\"palette\":[",
+         np->serial, NP_STATE[np->state], np->position, np->duration, np->age, np->has_palette);
+    for (int i = 0; i < 4; i++)
+        bput(o, "%s\"%02x%02x%02x\"", i ? "," : "",
+             (int)lroundf(g_np_target[i][0] * 255.0f), (int)lroundf(g_np_target[i][1] * 255.0f),
+             (int)lroundf(g_np_target[i][2] * 255.0f));
+    bput(o, "]}");
     bput(o, ",\"scenes\":[");
     for (int i = 0; i < g_nscenes; i++) { if (i) bput(o, ","); bstr(o, g_scenes[i]->name); }
     bput(o, "],\"params\":[");
@@ -1143,6 +1246,71 @@ static SDL_Keycode ctl_keycode(const char *k)
     return 0;
 }
 
+/* palette, np and progress; returns 1 if the command was one of them */
+static int np_command(const char *in, Buf *o)
+{
+    if (!strncmp(in, "palette ", 8)) {
+        char h[4][16];
+        float c[4][3];
+        int n = sscanf(in + 8, "%15s %15s %15s %15s", h[0], h[1], h[2], h[3]);
+        if (n >= 1 && !strcmp(h[0], "off")) {
+            memcpy(g_np_target, NP_DEFAULT, sizeof NP_DEFAULT);
+            g_np.has_palette = 0;
+            bput(o, "ok");
+            return 1;
+        }
+        int good = n == 4;
+        for (int i = 0; good && i < 4; i++) good = hex_rgb(h[i], c[i]);
+        if (!good) { bput(o, "error: palette needs four RRGGBB colours, or off"); return 1; }
+        memcpy(g_np_target, c, sizeof c);
+        g_np.has_palette = 1;
+        g_np_heard_ms = SDL_GetTicks();
+        bput(o, "ok");
+        return 1;
+    }
+    if (!strncmp(in, "np ", 3)) {
+        char *end;
+        long s = strtol(in + 3, &end, 10);
+        if (end == in + 3) { bput(o, "error: np needs a serial number"); return 1; }
+        g_np.serial = (int)s;
+        g_np_heard_ms = SDL_GetTicks();
+        bput(o, "ok");
+        return 1;
+    }
+    if (!strncmp(in, "progress ", 9)) {
+        long pos, dur;
+        char st[16] = "";
+        if (sscanf(in + 9, "%ld %ld %15s", &pos, &dur, st) != 3 || pos < 0 || dur < 0) {
+            bput(o, "error: progress <pos_ms> <dur_ms> <play|pause|stop>");
+            return 1;
+        }
+        int state = !strcmp(st, "play") ? DOME_NP_PLAY : !strcmp(st, "pause") ? DOME_NP_PAUSE
+                  : !strcmp(st, "stop") ? DOME_NP_STOP : -1;
+        if (state < 0) { bput(o, "error: state must be play, pause or stop"); return 1; }
+        g_np.state = state;
+        g_np.duration = (float)dur / 1000.0f;
+        g_np_pos0 = (float)pos / 1000.0f;
+        g_np_pos_ms = g_np_heard_ms = SDL_GetTicks();
+        np_tick(0.0f);
+        bput(o, "ok");
+        return 1;
+    }
+    return 0;
+}
+
+/* a "by" word: letters, digits, - and _ only, at most 15 */
+static void clean_by(const char *in, char *out, size_t cap)
+{
+    size_t n = 0;
+    for (; *in && n + 1 < cap; in++) {
+        char ch = *in;
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+            || ch == '-' || ch == '_') out[n++] = ch;
+    }
+    out[n] = 0;
+    if (!n) snprintf(out, cap, "remote");
+}
+
 static void ctl_poll(int mode, int paused)
 {
     if (g_ctl == CTL_NONE) return;
@@ -1175,9 +1343,15 @@ static void ctl_poll(int mode, int paused)
                     done = 1;
                 }
             if (done) bput(&o, "ok"); else bput(&o, "error: no setting %s in scene %s", b, a);
+        } else if (np_command(in, &o)) {
+            /* done */
         } else if (!strncmp(in, "scene ", 6) && args >= 1) {
             int m = atoi(a);
-            if (m >= -2 && m < g_nscenes) { g_ctl_mode = m; bput(&o, "ok"); }
+            if (m >= -2 && m < g_nscenes) {
+                g_ctl_mode = m;
+                clean_by(args >= 2 ? b : "", g_ctl_by, sizeof g_ctl_by);
+                bput(&o, "ok");
+            }
             else bput(&o, "error: no scene %d", m);
         } else if (!strncmp(in, "key ", 4) && args >= 1) {
             SDL_Keycode k = ctl_keycode(a);
@@ -1331,6 +1505,7 @@ int dome_run(int argc, char **argv, const char *title,
     grids_build();
     for (int i = 0; i < nscenes; i++) if (scenes[i]->init) scenes[i]->init();
     ctl_init();
+    np_init();
     {   /* sound from WLED audio sync: DOME_AUDIO_PORT=0 turns it off */
         const char *pe = getenv("DOME_AUDIO_PORT"), *ge = getenv("DOME_AUDIO_GROUP");
         int port = pe ? atoi(pe) : 11988;
@@ -1402,6 +1577,7 @@ int dome_run(int argc, char **argv, const char *title,
         if (g_ctl_mode != -99) {
             mode = g_ctl_mode;
             g_ctl_mode = -99;
+            set_by(g_ctl_by);
             printf("Mode: %s\n", mode == -2 ? "LENS GRID (adjusting CALIBRATION)"
                                : mode == -1 ? "GLOBE GRID (adjusting CALIBRATION)"
                                : scenes[mode]->name);
@@ -1428,6 +1604,7 @@ int dome_run(int argc, char **argv, const char *title,
             if (k == SDLK_b) new_mode = -1;
             if (new_mode != -99) {
                 mode = new_mode;
+                set_by("key");
                 printf("Mode: %s\n", mode == -2 ? "LENS GRID (adjusting CALIBRATION)"
                                    : mode == -1 ? "GLOBE GRID (adjusting CALIBRATION)"
                                    : scenes[mode]->name);
@@ -1498,6 +1675,7 @@ int dome_run(int argc, char **argv, const char *title,
         float dt = now - last_t; last_t = now;
         if (!paused) spin += (2.0f * PI / g_view.rev_secs) * dt;
         audio_update(&g_audio, now, dt);         /* even when paused */
+        np_tick(dt);
         if (getenv("DOME_AUDIO_DEBUG") && now - audio_t >= 0.5f) {
             const Audio *a = &g_audio;
             printf("audio  bass %.2f body %.2f mid %.2f air %.2f  beat %.2f  %5.1f bpm  "
