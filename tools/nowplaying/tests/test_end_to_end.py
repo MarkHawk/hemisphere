@@ -205,3 +205,34 @@ def test_record_writes_scrubbed_fixture(tmp_path):
     body = path.read_text()
     assert '"pid": 1234567' in body or "pid=1234567" in body
     assert amp.refused == []
+
+
+def test_radio_details_arriving_in_pieces(rig):
+    """As the recorded TuneIn station did: a bitrate as the song, the
+    station name and logo coming and going."""
+    amp, covers, hemi, np, stop, data, logs = rig
+    station = lambda **kv: dict({"type": "station", "song": "", "station": "", "album": "",
+                                 "artist": "", "image_url": "", "album_id": "s1",
+                                 "mid": "https://example.invalid/radio.mp3", "sid": 3}, **kv)
+    np.take_media(station(song="256 kbps mp3", station="Test FM (Dance)",
+                          image_url=covers.url("/cover/radio.png")))
+    now = (data / "now.txt").read_text()
+    assert "title=Test FM (Dance)" in now and "art=1" in now
+    pal = [c for c in hemi.got if c.startswith("palette ")][-1]
+    assert pal != "palette off"
+    np.take_media(station(song="Morning Show", artist="DJ Test"))     # no name, no logo
+    now = (data / "now.txt").read_text()
+    assert "title=Morning Show" in now and "station=Test FM (Dance)" in now
+    assert "art=1" in now
+    assert [c for c in hemi.got if c.startswith("palette ")][-1] == pal  # colours kept
+    np.take_media(station(song="Other", album_id="s2", station="Other FM", mid="x"))
+    assert [c for c in hemi.got if c.startswith("palette ")][-1] == "palette off"
+    assert "art=0" in (data / "now.txt").read_text()
+
+
+@pytest.mark.parametrize("text,junk", [
+    ("256 kbps mp3", True), ("128k AAC", True), ("64 kbit/s", True), ("320kbps", True),
+    ("128 Beats Per Minute", False), ("99 Red Balloons", False), ("", False),
+])
+def test_stream_info_titles(text, junk):
+    assert nowplaying.is_stream_info(text) is junk

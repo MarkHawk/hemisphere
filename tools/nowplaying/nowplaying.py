@@ -50,6 +50,12 @@ from switcher import SHOWS, Switcher, classify, load_config
 
 HERE = pathlib.Path(__file__).resolve().parent
 KEEP_PALETTE = {"disc"}        # no cover expected: keep the colours there are
+# what some radio streams send as the song: "256 kbps mp3", "128k AAC"
+STREAM_INFO = re.compile(r"^\s*\d{2,4}\s*k(bps|bit/s|b/s|bit)?\b[\s\w/+-]*$", re.I)
+
+
+def is_stream_info(text):
+    return bool(STREAM_INFO.match(text or ""))
 
 
 class NowPlaying:
@@ -78,6 +84,9 @@ class NowPlaying:
         self.has_art = False
         self.info = {}
         self.sound = False
+        # a radio station sends its details in pieces, a logo one minute
+        # and none the next: keep what it gave while it is the same station
+        self.radio = {"id": None, "station": "", "palette": None, "art": False}
         self.next_sound = 0.0
         self.next_sync = 0.0
         self.published = None
@@ -85,7 +94,8 @@ class NowPlaying:
     # ---- what is playing ------------------------------------------
     def title_of(self, m):
         """The title to show; inputs come as '<player> - Phono'."""
-        t = m.get("song") or m.get("station") or ""
+        song = "" if is_stream_info(m.get("song")) else m.get("song")
+        t = song or m.get("station") or ""
         if self.player_name and t.startswith(self.player_name + " - "):
             t = t[len(self.player_name) + 3:]
         return t
@@ -118,6 +128,8 @@ class NowPlaying:
             station = ""
         if self.player_name and station.startswith(self.player_name + " - "):
             station = station[len(self.player_name) + 3:]
+        if self.behaviour == "radio":
+            station = self.remember_station(m, station)
         self.info = {"title": self.title_of(m), "artist": m.get("artist", ""),
                      "album": m.get("album", ""), "station": station,
                      "source": self.source, "behaviour": self.behaviour,
@@ -126,6 +138,20 @@ class NowPlaying:
         what = " / ".join(x for x in (self.info["title"], self.info["artist"]) if x)
         self.log(f"Now playing: {what or 'nothing'} ({self.source}, {self.behaviour}"
                  f"{', with cover' if self.has_art else ''})")
+
+    def remember_station(self, m, station):
+        """Fill gaps in a station's details from what it sent before."""
+        sid = (str(m.get("sid", "")), str(m.get("album_id") or m.get("mid") or ""))
+        r = self.radio
+        if sid != r["id"]:
+            r.update(id=sid, station="", palette=None, art=False)
+        if station:
+            r["station"] = station
+        if self.has_art:
+            r["palette"], r["art"] = self.palette, True
+        elif r["art"]:                         # no logo this time: keep the last
+            self.palette, self.has_art = r["palette"], True
+        return station or r["station"]
 
     def send_all(self):
         """Everything the dome should know, again (also after it restarts)."""
