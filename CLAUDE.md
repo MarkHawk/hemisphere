@@ -7,9 +7,10 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
 
 ## Layout
 
-- `main.c`: entry point, scene switching. The 18 scenes, in `main.c` order:
+- `main.c`: entry point, scene switching. The 19 scenes, in `main.c` order:
   deathstar, planet, plasma, julia, kaleido, life, moon, orbit, groovy, scifi,
-  computers, hypno, balls, retro, screen (Retro screen), weather, eyes, music. The first ten are on number keys 1 to
+  computers, hypno, balls, retro, screen (Retro screen), weather, eyes, music,
+  nowplaying. The first ten are on number keys 1 to
   9 and 0; the rest are on `,` and `.` and the web remote. The framework
   allows up to 24 scenes (`DOME_MAX_SCENES` in `dome/dome.h`). Aim for 8 good styles per scene; the plan and the
   quality bar are in the "Hemisphere scene plan" doc. For speed on the Pi,
@@ -25,6 +26,8 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
 - `textures/`: planet maps from Solar System Scope (CC BY 4.0, credited in README)
 - `third_party/stb_image.h`: image loading (public domain / MIT)
 - `tools/`: `orbitfeed.py` + `orbitfeed.service` (Python, venv), `prep_textures.py`,
+  `nowplaying/` (what a HEOS amp is playing, read only, for the Now playing
+  scene; pinned requirements, pytest tests with a fake HEOS device),
   `remote/` (a Flask web remote on port 5000, talking to the UDP control channel
   on 127.0.0.1:5005), `windows/` (start-up and autostart scripts), `audio/`
   (`replay.py` sends the `billie.txt` capture as WLED audio sync packets, for testing)

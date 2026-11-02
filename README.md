@@ -36,7 +36,7 @@ write it up (see [Debugging notes](#debugging-notes)).
 I built it with AI-assisted tooling (Claude Code). I directed the work,
 tested every change on the real display, and did the calibration myself.
 
-Sixteen scenes come with it. The first ten are on the number keys; the
+Nineteen scenes come with it. The first ten are on the number keys; the
 rest are on `,` and `.` and the web remote.
 
 | Key | Scene | What it shows |
@@ -59,6 +59,7 @@ rest are on `,` and `.` and the web remote.
 | , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
 | , and . | Eyes | One big eye filling the dome, looking round the room, blinking, its pupil opening and closing: brown, blue, green and hazel human eyes, a cat, an owl, a reptile, and an original fire eye of glowing embers in an obsidian eyeball |
 | , and . | Music | Built for sound from your WLED lights (see "Sound from WLED"): 21 styles: spectra, rings, ripples, a starfield, aurora, oscilloscope and Lissajous figures, a wire tunnel and a spectrum landscape, particle bursts, a galaxy, rain, fireworks, an 8-bit analyser, plasma, a kaleidoscope, liquid light and a ring of fire. With no music each style idles calmly |
+| , and . | Now playing | What your HEOS amp is playing (see [Now playing](#now-playing-from-a-heos-amp)): the cover filling the dome, a turning record or CD, the track as a day with a moon, today's covers as an atlas of countries, the cover in dots dancing to the music, or a status display with the time, volume and up next. Moves lightly with your WLED lights |
 
 Hemisphere grew out of my earlier `worldeye` program, a single-file Death
 Star renderer. The lens calibration from that project is the core here,
@@ -99,7 +100,8 @@ hemisphere/
   scenes/julia.c           4   scenes/groovy.c   9
   scenes/kaleido.c         5   scenes/scifi.c    0
   scenes/computers.c       the rest are on , and .:
-  scenes/hypno.c, balls.c, retro.c, screen.c
+  scenes/hypno.c, balls.c, retro.c, screen.c,
+    weather.c, eyes.c, music.c, nowplaying.c
   third_party/stb_image.h  JPEG/PNG loader (public domain, single header)
   textures/                planet and moon maps go here
   data/                    live data from the orbit feed (created by it)
@@ -271,6 +273,7 @@ Settings are kept in files next to the program, in groups:
 | `eyes.cfg` | Eyes | Eyes (, and .) | Style, speed, how far it looks, blinks, lids, pupil size, shine |
 | `weather.cfg` | Weather | Weather (, and .) | Style, home, zoom, clouds, coasts, storm speed |
 | `music.cfg` | Music | Music (, and .) | Style, sound on or off, how strongly it reacts, speed, colours |
+| `nowplaying.cfg` | Now playing | Now playing (, and .) | Style, sound on or off, how strongly it reacts, speed, colours, rim text, dots |
 
 In a scene, TAB steps through the six view settings first (`pitch`,
 `tilt`, `wobble`, `rev_secs`, `res`, `view_dist`) and then that scene's
@@ -559,6 +562,29 @@ Every style holds 60 frames a second on a Pi 3. Each has its own small
 shader, the costly maths is baked into textures or worked out once a
 frame on the CPU, and lines and particles are dots.
 
+**Now playing settings:** `style` (**N**, 6 styles, listed below; the
+now-playing tool picks one to suit the source), `audio` (1, moves lightly
+with the music from your WLED lights), `react`, `speed`, `theme` (**M**;
+8, album, the cover's own colours, is the default), `bright`, `text` (1
+shows the title and artist round the rim) and `dots` (style 4: 96 or 128
+across). It needs `tools/nowplaying` running (see [Now playing from a
+HEOS amp](#now-playing-from-a-heos-amp)); without it every style shows
+its idle look in the current colours. Between tracks the globe turns
+half a revolution: the new cover comes in from behind the horizon and the
+old one goes round the back.
+
+| Style | What it shows |
+|-------|---------------|
+| 0 album globe | The cover filling the whole dome, centre to rim, swaying a little and breathing with the bass; the title round the top of the rim, artist and album (or station) round the bottom |
+| 1 record planet | The globe as a record facing you: grooves, a sheen that stays with the light and shimmers with the mids, the cover as the label turning at 33 1/3 rpm (stripes in your colours on phono, which sends no cover), a tonearm moving in through the track; it spins down on pause. For a CD, a silver disc with a rainbow sheen and a label in your colours. Labels swell slightly on the beat |
+| 2 track as a day | The cover lit by a sun crossing it through the track, dawn to dusk; lights across the night side twinkle with the treble, and a moon orbits once per track, glowing on the beat |
+| 3 album atlas | Today's covers tiled over the globe like countries; it turns to bring each new one to the front, the coastlines rippling with the bass |
+| 4 art into particles | The cover as 128 x 128 dots, each moving with its band of the music and settling back into the picture between phrases |
+| 5 track info | Title, artist and album, play state and time, a progress ring, up next, volume, shuffle and repeat, and the source with a small icon, with a thin spectrum ring round the rim |
+
+All six hold 60 frames a second on a Pi 3 (measured at 58.5 to 60 with
+the CPU throttled to 600 MHz by a weak power supply).
+
 **Weather settings:** `style` (**N**: 0 live clouds, 1 infrared, 2 over
 home, 3 aurora, 4 storms), `speed` (the drift and shimmer), `home_lat` and
 `home_lon`, `zoom` (over home: 1, the default, shows the whole side of
@@ -715,9 +741,11 @@ hands it to the dome:
   HEOS queue plays next) in `data/nowplaying/now.txt`, the **progress**
   about once a second, and the **volume**, mute, repeat and shuffle as
   they change.
-* **switching**: when music starts it shows the music scene (Music for now),
-  and when it has been paused or stopped for five minutes it puts back the
-  scene and style that were there. It never switches within ten minutes of
+* **switching**: when music starts it shows the Now playing scene in a
+  style that suits the source (the record planet for phono and CD, the
+  album globe for the rest; Music, in the album colours, if there is no
+  Now playing scene), and when it has been paused or stopped for five
+  minutes it puts back the scene and style that were there. It never switches within ten minutes of
   you changing scene by hand (keyboard or remote), never over a calibration
   grid, and if you change scene while it has the dome it leaves the dome
   alone until the music has stopped for a while. The playlist waits while
@@ -736,7 +764,8 @@ other inputs show what
 there is, and so does anything unknown. A source set to `release` (none
 by default; a TV input, say) gives the dome back after ten seconds.
 Inputs are shown by a short label ("Phono", "CD") rather than the amp's
-own "<player> - Coaxial In". For inputs where the amp cannot tell whether music is playing (a
+own "<player> - Coaxial In". For inputs where the amp cannot tell
+whether music is playing (a
 turntable, a CD player), sound from your WLED audio sync counts as
 playing. Copy the file, change it and pass it with `--config` to suit
 your own inputs. The times are in there too.
@@ -1030,8 +1059,8 @@ don't have this problem.
 | P / H | Print all settings / the key list |
 | SPACE | Pause rotation |
 | UP / DOWN | Faster / slower rotation |
-| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro, Retro screen, Weather, Music), map (planet) or view (orbit watch). Death Star: thinner lines |
-| M | Hypnotic, Music: next colours. Computers: phosphor colour. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: thicker lines |
+| N | Next colour theme (plasma, Julia, kaleidoscope, Life), style (Groovy, Sci-fi, Computers, Hypnotic, Sports balls, 8-bit retro, Retro screen, Weather, Music, Now playing), map (planet) or view (orbit watch). Death Star: thinner lines |
+| M | Hypnotic, Music, Now playing: next colours. Computers: phosphor colour. Julia: Julia / Mandelbrot. Kaleidoscope: mirror style. Life: next rules. Planet: previous map. Death Star: thicker lines |
 | C | Life: reseed. Death Star: cycle phosphor colour |
 | I / K | Death Star: dish shallower / deeper |
 | Z | Death Star: replay the intro zoom |
