@@ -39,6 +39,14 @@
  *                   treble at the rim), out and round by its own amount,
  *                   and they settle back into the cover between phrases
  *                   (every 16 beats, or 8 seconds without a tempo)
+ *   5 track info    a status display over the whole dome: title, artist
+ *                   and album (or station) across the middle; play state
+ *                   and time below (elapsed and remaining, or elapsed
+ *                   alone when there is no length, as on phono and CD);
+ *                   a progress ring; up next across the top when the HEOS
+ *                   queue has one; volume (or muted), shuffle and repeat,
+ *                   and the source with a small icon, round the bottom;
+ *                   a thin 16-band spectrum ring round the rim
  *
  * Shared by every style:
  *   the turn        the globe has two faces. A new cover is loaded into
@@ -266,6 +274,27 @@ static const char PARTS[] =
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
+/* ---- 5: track info: a dark sky, the cover faint behind, and the
+ * spectrum round the rim (bass at the bottom, treble at the top, the
+ * same on both sides) ---------------------------------------------- */
+static const char INFO[] =
+    "uniform sampler2D u_spec;\n"
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float back, r;\n"
+    "  vec2 q = polar(u_turn * view, back, r);\n"
+    "  vec3 art = texture2D(u_art, vec2((0.5 + 0.5 * q.x + back) * 0.5, 0.5 - 0.5 * q.y)).rgb;\n"
+    "  float has = mix(u_has.x, u_has.y, back) * u_show;\n"
+    "  vec3 col = theme(u_theme, 0.55 - view.z * 0.3) * 0.2 + art * has * 0.14 * u_dim;\n"
+    "  float a = abs(fatan2(view.y, view.x) * 0.15915494 + 0.25);\n"   /* 0 bottom .. 0.5 top */
+    "  a = min(a, 1.0 - a) * 2.0;\n"
+    "  float lev = texture2D(u_spec, vec2(a, 0.5)).r;\n"
+    "  float t = (0.13 - view.z) * 11.111;\n"                 /* 0 inner edge .. 1 outer */
+    "  float bar = step(0.0, t) * step(t, 1.0) * step(fract(a * 16.0), 0.82);\n"
+    "  float lit = step(t, 0.1 + 0.9 * lev);\n"
+    "  col = mix(col, mix(u_c0 * 2.5, u_c1, lit), bar * 0.9);\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
 typedef struct {
     const char *name;
     const char *glsl;
@@ -279,6 +308,8 @@ static void day_points(const DomeFrame *f);
 static void rim_text(const DomeFrame *f);
 static void parts_points(const DomeFrame *f);
 static void parts_colours(int k);
+static void info_points(const DomeFrame *f);
+static void fit(char *dst, size_t cap, const char *src, int max);
 static void dome_at(float r, float th, float out[3]);
 
 static const Style STYLES[] = {
@@ -287,13 +318,14 @@ static const Style STYLES[] = {
     { "track as a day", DAY,   NULL, day_points },
     { "album atlas",   ATLAS,  NULL, rim_text },
     { "art into particles", PARTS, NULL, parts_points },
+    { "track info",    INFO,   NULL, info_points },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
 static GLuint g_prog[NSTYLE], g_prog_disc[NSTYLE];
 
 static Param P[] = {
-    { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0, "0 album globe, 1 record planet (a CD for a disc), 2 track as a day, 3 album atlas, 4 art into particles (N)" },
+    { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0, "0 album globe, 1 record planet (a CD for a disc), 2 track as a day, 3 album atlas, 4 art into particles, 5 track info (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off, 1 moves with the music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it moves with the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the slow motion" },
@@ -580,6 +612,181 @@ static void parts_points(const DomeFrame *f)
     rim_text(f);
 }
 
+/* ---- 5: track info ----------------------------------------------- */
+static DomePoints g_i_lines, g_i_arcs, g_i_dyn;
+static int   g_info_dirty = 1;
+static float g_info_next;                /* when the moving parts are redrawn */
+static GLuint g_spec_tex;
+
+/* 7 x 7 icons, the top row first, bit 6 the left column */
+static const unsigned char ICON_PLAY[7]   = { 0x40, 0x60, 0x70, 0x78, 0x70, 0x60, 0x40 };
+static const unsigned char ICON_PAUSE[7]  = { 0x36, 0x36, 0x36, 0x36, 0x36, 0x36, 0x36 };
+static const unsigned char ICON_STOP[7]   = { 0x00, 0x3e, 0x3e, 0x3e, 0x3e, 0x3e, 0x00 };
+static const unsigned char ICON_STREAM[7] = { 0x3e, 0x41, 0x1c, 0x22, 0x08, 0x00, 0x08 };
+static const unsigned char ICON_RADIO[7]  = { 0x02, 0x04, 0x7f, 0x41, 0x5d, 0x41, 0x7f };
+static const unsigned char ICON_RECORD[7] = { 0x1c, 0x3e, 0x77, 0x6b, 0x77, 0x3e, 0x1c };
+static const unsigned char ICON_DISC[7]   = { 0x1c, 0x22, 0x41, 0x49, 0x41, 0x22, 0x1c };
+
+/* an icon on an arc round the centre (as dome_text_arc places text),
+ * radius and angle in degrees, size its height */
+static void icon_at(DomePoints *p, const unsigned char rows[7], float r_deg, float th_deg,
+                    float size_deg, const float c[3], float a)
+{
+    float th = DEG2RAD(th_deg), ra = DEG2RAD(r_deg), px = DEG2RAD(size_deg) / 7.0f;
+    float ctr[3];
+    dome_at(r_deg / 90.0f, th, ctr);
+    int top = sinf(th) > 0.0f;
+    /* across: along the arc, reading left to right; up: towards the
+     * centre on the bottom half, outwards on the top */
+    float e1[3] = { -sinf(th), cosf(th), 0.0f };
+    float er[3] = { cosf(ra) * cosf(th), cosf(ra) * sinf(th), -sinf(ra) };
+    float up = top ? 1.0f : -1.0f;
+    if (top) { e1[0] = -e1[0]; e1[1] = -e1[1]; }
+    for (int row = 0; row < 7; row++)
+        for (int col = 0; col < 7; col++) {
+            if (!((rows[row] >> (6 - col)) & 1)) continue;
+            for (int sy = 0; sy < 2; sy++)
+                for (int sx = 0; sx < 2; sx++) {
+                    float x = (col - 3.0f + (sx - 0.5f) * 0.5f) * px;
+                    float y = (3.0f - row + (sy - 0.5f) * 0.5f) * px * up;
+                    dome_points_push(p, ctr[0] + e1[0] * x + er[0] * y, ctr[1] + e1[1] * x + er[1] * y,
+                                     ctr[2] + e1[2] * x + er[2] * y, c[0], c[1], c[2], a);
+                }
+        }
+}
+
+/* width of text on an arc, in degrees of angle round the centre */
+static float arc_width(const char *s, float r_deg, float h_deg)
+{
+    return (strlen(s) * 6.0f - 1.0f) * h_deg / 7.0f / sinf(DEG2RAD(r_deg));
+}
+
+static void upper(char *s) { for (; *s; s++) if (*s >= 'a' && *s <= 'z') *s -= 32; }
+
+static void clock_text(char *out, size_t cap, float secs)
+{
+    int t = (int)(secs < 0 ? 0 : secs);
+    if (t >= 3600) snprintf(out, cap, "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60);
+    else snprintf(out, cap, "%d:%02d", t / 60, t % 60);
+}
+
+static void info_colours(float bright[3], float soft[3], float dim[3])
+{
+    const DomeNowPlaying *np = dome_nowplaying();
+    float l = 0.2126f * np->palette[0][0] + 0.7152f * np->palette[0][1] + 0.0722f * np->palette[0][2];
+    for (int k = 0; k < 3; k++) {
+        bright[k] = np->palette[0][k] + (1.0f - np->palette[0][k]) * (l < 0.7f ? (0.7f - l) / 0.7f : 0.0f);
+        soft[k] = 0.75f * bright[k] + 0.25f * np->palette[1][k];
+        dim[k] = 0.45f * soft[k];
+    }
+}
+
+/* the parts that change only with the track */
+static void info_static(void)
+{
+    float br[3], so[3], di[3];
+    info_colours(br, so, di);
+    char title[64], artist[64], third[64], next[96], src[80];
+    fit(title, sizeof title, g_info.title, 26);
+    fit(artist, sizeof artist, g_info.artist, 36);
+    const char *t3 = g_info.album[0] ? g_info.album
+                   : strcmp(g_info.station, g_info.title) ? g_info.station : "";
+    fit(third, sizeof third, t3, 40);
+    dome_points_clear(&g_i_lines);
+    if (title[0]) dome_text_line(&g_i_lines, title, 7.0f, 4.6f, br[0], br[1], br[2], 1.0f);
+    if (artist[0]) dome_text_line(&g_i_lines, artist, -0.5f, 3.4f, so[0], so[1], so[2], 1.0f);
+    if (third[0]) dome_text_line(&g_i_lines, third, -6.5f, 3.0f, di[0] * 1.6f, di[1] * 1.6f, di[2] * 1.6f, 1.0f);
+    dome_points_upload(&g_i_lines);
+
+    dome_points_clear(&g_i_arcs);
+    if (g_info.next[0]) {
+        char s[160];
+        snprintf(s, sizeof s, "UP NEXT  %s", g_info.next);
+        fit(next, sizeof next, s, 44);
+        dome_text_arc(&g_i_arcs, next, 70.0f, 90.0f, 3.0f, so[0], so[1], so[2], 1.0f);
+    }
+    snprintf(src, sizeof src, "%s", g_info.source[0] ? g_info.source : "NOTHING PLAYING");
+    upper(src);
+    dome_text_arc(&g_i_arcs, src, 75.0f, -90.0f, 3.2f, so[0], so[1], so[2], 1.0f);
+    const unsigned char *ic = !strcmp(g_info.behaviour, "disc") ? ICON_DISC
+                            : !strcmp(g_info.behaviour, "record") ? ICON_RECORD
+                            : !strcmp(g_info.behaviour, "radio") ? ICON_RADIO : ICON_STREAM;
+    if (g_info.source[0])
+        icon_at(&g_i_arcs, ic, 75.0f, -90.0f - 0.5f * arc_width(src, 75.0f, 3.2f) - 4.0f, 3.2f, br, 1.0f);
+    dome_points_upload(&g_i_arcs);
+}
+
+/* the parts that move: state, time, progress ring, volume and modes */
+static void info_dynamic(void)
+{
+    const DomeNowPlaying *np = dome_nowplaying();
+    float br[3], so[3], di[3];
+    info_colours(br, so, di);
+    dome_points_clear(&g_i_dyn);
+    /* state and time, on an arc under the middle */
+    char t1[16], t2[16], line[64];
+    clock_text(t1, sizeof t1, np->position);
+    if (np->duration > 0.0f) {
+        clock_text(t2, sizeof t2, np->duration - np->position);
+        snprintf(line, sizeof line, "%s   %s / -%s",
+                 np->state == DOME_NP_PLAY ? "PLAYING" : np->state == DOME_NP_PAUSE ? "PAUSED" : "STOPPED", t1, t2);
+    } else
+        snprintf(line, sizeof line, "%s   %s",
+                 np->state == DOME_NP_PLAY ? "PLAYING" : np->state == DOME_NP_PAUSE ? "PAUSED" : "STOPPED", t1);
+    if (np->age < 0.0f) snprintf(line, sizeof line, "NO PLAYER");
+    dome_text_arc(&g_i_dyn, line, 30.0f, -90.0f, 3.0f, so[0], so[1], so[2], 1.0f);
+    const unsigned char *st = np->state == DOME_NP_PLAY ? ICON_PLAY
+                            : np->state == DOME_NP_PAUSE ? ICON_PAUSE : ICON_STOP;
+    if (np->age >= 0.0f)
+        icon_at(&g_i_dyn, st, 30.0f, -90.0f - 0.5f * arc_width(line, 30.0f, 3.0f) - 6.0f, 3.0f, br, 1.0f);
+    /* the progress ring, from the top, clockwise; without a length a
+     * marker goes round once a minute */
+    const int N = 240;
+    float frac = np->duration > 0.0f ? np->position / np->duration : -1.0f;
+    float mark = fmodf(np->position, 60.0f) / 60.0f;
+    for (int i = 0; i < N; i++) {
+        float u = (float)i / N, pt[3];
+        dome_at(56.0f / 90.0f, DOME_PI * 0.5f - u * 2.0f * DOME_PI, pt);
+        int on;
+        float a = 1.0f;
+        if (frac >= 0.0f) on = u <= frac;
+        else {
+            float d = fmodf(mark - u + 1.0f, 1.0f);
+            on = d < 0.06f;
+            a = on ? 1.0f - d / 0.06f : 1.0f;
+        }
+        const float *c = on ? br : di;
+        dome_points_push(&g_i_dyn, pt[0], pt[1], pt[2], c[0], c[1], c[2], on ? a : 0.55f);
+    }
+    /* volume, shuffle and repeat */
+    char status[80] = "";
+    if (np->volume >= 0) {
+        if (np->mute) snprintf(status, sizeof status, "MUTED");
+        else snprintf(status, sizeof status, "VOL %d", np->volume);
+    }
+    if (np->shuffle) strncat(status, status[0] ? "   SHUFFLE" : "SHUFFLE", sizeof status - strlen(status) - 1);
+    if (np->repeat == DOME_NP_REPEAT_ALL)
+        strncat(status, status[0] ? "   REPEAT ALL" : "REPEAT ALL", sizeof status - strlen(status) - 1);
+    if (np->repeat == DOME_NP_REPEAT_ONE)
+        strncat(status, status[0] ? "   REPEAT ONE" : "REPEAT ONE", sizeof status - strlen(status) - 1);
+    if (status[0]) dome_text_arc(&g_i_dyn, status, 66.0f, -90.0f, 3.0f, di[0] * 1.6f, di[1] * 1.6f, di[2] * 1.6f, 1.0f);
+    dome_points_upload(&g_i_dyn);
+}
+
+static void info_points(const DomeFrame *f)
+{
+    if (g_txt_dirty) { g_info_dirty = 1; }
+    if (g_info_dirty) { g_info_dirty = 0; g_txt_dirty = 0; info_static(); }
+    if (g_t >= g_info_next) { g_info_next = g_t + 0.25f; info_dynamic(); }
+    mat3 still, view;
+    m3_identity(still);
+    dome_view_rot(view);
+    float a = f->fade * g_text_a;
+    dome_draw_points(&g_i_lines, view, a, 2.4f);
+    dome_draw_points(&g_i_arcs, still, a, 2.4f);
+    dome_draw_points(&g_i_dyn, still, f->fade, 2.4f);
+}
+
 /* new details from the tool: load the cover into the face behind and
  * turn, or only change the text if the cover is the same */
 static void take_new(void)
@@ -850,6 +1057,19 @@ static void init(void)
     dome_points_init(&g_moon, 1000);
     dome_points_init(&g_parts, PN_MAX * PN_MAX + 16);
     g_cover = calloc((size_t)ART * ART * 4, 1);
+    dome_points_init(&g_i_lines, 30000);
+    dome_points_init(&g_i_arcs, 20000);
+    dome_points_init(&g_i_dyn, 20000);
+    {
+        unsigned char zero[AUDIO_BANDS] = { 0 };
+        glGenTextures(1, &g_spec_tex);
+        glBindTexture(GL_TEXTURE_2D, g_spec_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, AUDIO_BANDS, 1, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, zero);
+    }
 }
 
 static void draw(const DomeFrame *f)
@@ -893,6 +1113,17 @@ static void draw(const DomeFrame *f)
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, g_art_tex);
     glUniform1i(glGetUniformLocation(p, "u_art"), 1);
+    if (style() == 5) {
+        unsigned char px[AUDIO_BANDS];
+        for (int i = 0; i < AUDIO_BANDS; i++) {
+            float v = f->audio.band[i] * L.audio;
+            px[i] = (unsigned char)lroundf((v < 0 ? 0 : v > 1 ? 1 : v) * 255.0f);
+        }
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, g_spec_tex);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, AUDIO_BANDS, 1, GL_LUMINANCE, GL_UNSIGNED_BYTE, px);
+        glUniform1i(glGetUniformLocation(p, "u_spec"), 2);
+    }
     if (style() == 3) {
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, g_atlas_tex);
