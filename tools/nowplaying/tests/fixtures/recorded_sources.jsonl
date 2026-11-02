@@ -1,0 +1,201 @@
+{"direction": "sent", "line": "heos://system/register_for_change_events?enable=on"}
+{"direction": "received", "line": {"heos": {"command": "system/register_for_change_events", "result": "success", "message": "enable=on"}}}
+{"direction": "sent", "line": "heos://player/get_players"}
+{"direction": "received", "line": {"heos": {"command": "player/get_players", "result": "success", "message": ""}, "payload": [{"name": "Test Amp", "pid": 1234567, "model": "Test Model", "version": "3.139.173", "ip": "192.0.2.10", "network": "test-network", "lineout": 0, "serial": "TEST0000000"}]}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=pause"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "Get Lucky (feat. Pharrell Williams and Nile Rodgers)", "station": "Get Lucky (feat. Pharrell Williams and Nile Rodgers)", "album": "Random Access Memories", "artist": "Daft Punk", "image_url": "https://i.scdn.co/image/ab67616d0000b2734d22198f946d9b32f25fc263", "album_id": "1", "mid": "spotify:track:66xHyI6ITToQPm7PdOzIyn", "qid": 1, "sid": 4}, "options": [{"play": [{"id": 19, "name": "Test Amp"}]}]}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=play"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=play"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=174000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=179000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=184000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=189000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=194000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=199000&duration=369000"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=204000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=209000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=215000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=220000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=224000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=230000&duration=369000"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=unknown"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "Get Lucky (feat. Pharrell Williams and Nile Rodgers)", "station": "Get Lucky (feat. Pharrell Williams and Nile Rodgers)", "album": "Random Access Memories", "artist": "Daft Punk", "image_url": "https://i.scdn.co/image/ab67616d0000b2734d22198f946d9b32f25fc263", "album_id": "1", "mid": "spotify:track:66xHyI6ITToQPm7PdOzIyn", "qid": 1, "sid": 4}, "options": [{"play": [{"id": 19, "name": "Test Amp"}]}]}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=unknown"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_queue_changed", "message": "pid=1234567"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "Test Amp - Phono", "station": "Test Amp - Phono", "album": "", "artist": "", "image_url": "", "album_id": "inputs/", "mid": "inputs/phono", "qid": 1, "sid": 1027}, "options": []}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=play"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=play"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=1000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=6000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=11000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=16000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=21000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=26000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=31000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=36000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=41000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=46000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=51000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=56000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=61000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=66000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=71000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=76000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=81000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=86000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=20&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=20&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=91000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=22&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=22&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=24&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=24&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=96000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=101000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=106000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=stop"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=stop"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_queue_changed", "message": "pid=1234567"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "Test Amp - Coaxial In", "station": "Test Amp - Coaxial In", "album": "", "artist": "", "image_url": "", "album_id": "inputs/", "mid": "inputs/coax_in_1", "qid": 1, "sid": 1027}, "options": []}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=play"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=play"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=23&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=23&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=21&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=21&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=20&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=1000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=6000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=11000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=16000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=21000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=26000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=31000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=36000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=41000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=46000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=51000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=56000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=61000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=66000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=71000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=76000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=81000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=86000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=91000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=96000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=101000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=stop"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=stop"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_queue_changed", "message": "pid=1234567"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "256 kbps mp3", "station": "RadioActive FM Dance (Dance & Electronic)", "album": "", "artist": "", "image_url": "", "album_id": "s113649", "mid": "https://stream.radioactivefm.co.uk/listen/radioactive_fm/radio.mp3", "qid": 1, "sid": 3}, "options": [{"play": [{"id": 19, "name": "Test Amp"}]}]}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "", "station": "RadioActive FM", "album": "", "artist": "", "image_url": "", "album_id": "s113649", "mid": "https://stream.radioactivefm.co.uk/listen/radioactive_fm/radio.mp3", "qid": 1, "sid": 3}, "options": [{"play": [{"id": 19, "name": "Test Amp"}]}]}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "The Big Breakfast", "station": "", "album": "", "artist": "DJ Perry Cee the OG", "image_url": "", "album_id": "s113649", "mid": "https://stream.radioactivefm.co.uk/listen/radioactive_fm/radio.mp3", "qid": 1, "sid": 3}, "options": [{"play": [{"id": 19, "name": "Test Amp"}]}]}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=play"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=play"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "The Big Breakfast", "station": "RadioActive FM Dance", "album": "", "artist": "DJ Perry Cee the OG", "image_url": "https://cdn-profiles.tunein.com/s113649/images/logod.jpg?t=637967773630000000", "album_id": "s113649", "mid": "https://stream.radioactivefm.co.uk/listen/radioactive_fm/radio.mp3", "qid": 1, "sid": 3}, "options": [{"play": [{"id": 19, "name": "Test Amp"}]}]}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "The Big Breakfast", "station": "RadioActive FM Dance", "album": "", "artist": "DJ Perry Cee the OG", "image_url": "https://cdn-profiles.tunein.com/s113649/images/logod.jpg?t=637967773630000000", "album_id": "s113649", "mid": "https://stream.radioactivefm.co.uk/listen/radioactive_fm/radio.mp3", "qid": 1, "sid": 3}, "options": [{"play": [{"id": 19, "name": "Test Amp"}]}]}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=23&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=23&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=21&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_volume_changed", "message": "pid=1234567&level=21&mute=off"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=5000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=10000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=15000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=20000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=25000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=30000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=35000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=40000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=45000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=50000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=55000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=60000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=65000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=70000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=75000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=80000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=85000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=90000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=95000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=100000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=105000&duration=0"}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_progress", "message": "pid=1234567&cur_pos=110000&duration=0"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "received", "line": {"heos": {"command": "event/player_now_playing_changed", "message": "pid=1234567"}}}
+{"direction": "sent", "line": "heos://player/get_now_playing_media?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_now_playing_media", "result": "success", "message": "pid=1234567"}, "payload": {"type": "station", "song": "256 kbps mp3", "station": "RadioActive FM Dance (Dance & Electronic)", "album": "", "artist": "", "image_url": "", "album_id": "s113649", "mid": "https://stream.radioactivefm.co.uk/listen/radioactive_fm/radio.mp3", "qid": 1, "sid": 3}, "options": [{"play": [{"id": 19, "name": "Test Amp"}]}]}}
+{"direction": "received", "line": {"heos": {"command": "event/player_state_changed", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://player/get_play_state?pid=1234567"}
+{"direction": "received", "line": {"heos": {"command": "player/get_play_state", "result": "success", "message": "pid=1234567&state=stop"}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}
+{"direction": "sent", "line": "heos://system/heart_beat"}
+{"direction": "received", "line": {"heos": {"command": "system/heart_beat", "result": "success", "message": ""}}}

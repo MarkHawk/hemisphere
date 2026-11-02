@@ -182,3 +182,24 @@ def test_recorded_amp_phono_stopped(fixtures):
                  if g["heos"]["command"] == "player/get_play_state")
     assert state == "stop"
     assert switcher.classify(media, switcher.load_config())[:3] == ("record", "phono", True)
+
+
+def test_recorded_amp_every_source(fixtures):
+    """A real amp (anonymised): Spotify, phono, a CD on coax, a radio station."""
+    import switcher
+    cfg = switcher.load_config()
+    rows = [json.loads(l) for l in (fixtures / "recorded_sources.jsonl").read_text().splitlines()]
+    assert all(r["line"].split("?")[0][7:] in heos.ALLOWED
+               for r in rows if r["direction"] == "sent")                 # read only
+    got = [r["line"] for r in rows if r["direction"] == "received"]
+    media = [g["payload"] for g in got if g["heos"]["command"] == "player/get_now_playing_media"]
+    seen = {switcher.classify(m, cfg)[1]: switcher.classify(m, cfg)[0] for m in media}
+    assert seen == {"Spotify": "album", "phono": "record", "CD (coaxial)": "disc",
+                    "TuneIn": "radio"}
+    states = {heos.parse_message(g["heos"]["message"]).get("state") for g in got
+              if g["heos"]["command"] == "event/player_state_changed"}
+    assert {"play", "stop"} <= states
+    # inputs report progress with no length
+    prog = [heos.parse_message(g["heos"]["message"]) for g in got
+            if g["heos"]["command"] == "event/player_now_playing_progress"]
+    assert any(p["duration"] == "0" for p in prog)
