@@ -59,12 +59,16 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 unset WAYLAND_DISPLAY
 cd "$DIR" || exit 1
 
-# ready when the X socket is there and the desktop has written this boot's
-# X cookie; without the cookie, SDL can't open the display
-boot=$(date -d "$(uptime -s)" +%s)
+# ready when the X socket is there and the desktop has written the X
+# cookie for this X server; without the cookie, SDL can't open the display.
+# The cookie is checked against the socket's age, not the boot time: both
+# are stamped by the same clock as X starts, while the Pi (no clock
+# battery) corrects its clock later, which made a cookie look older than
+# the boot and every later restart wait the full two minutes. The minute
+# of slack allows for a cookie written just before the socket.
 ready() {
     [ -S /tmp/.X11-unix/X0 ] && [ -s "$XAUTHORITY" ] &&
-        [ "$(stat -c %Y "$XAUTHORITY")" -ge "$boot" ] &&
+        [ "$(stat -c %Y "$XAUTHORITY")" -ge $(( $(stat -c %Y /tmp/.X11-unix/X0) - 60 )) ] &&
         { ! command -v xset >/dev/null || xset q >/dev/null 2>&1; }
 }
 say "waiting for display $DISPLAY"
