@@ -114,6 +114,7 @@ hemisphere/
   tools/requirements.txt   Python packages for the tools
   tools/audio/replay.py    replays a WLED audio capture, for testing
   tools/audio/billie.txt   one minute of real audio sync data
+  tools/nowplaying/        what a HEOS amp is playing, for the dome (read only)
   tools/windows/           start-up scripts for a Windows PC
   deploy.sh                copy to the Pi and build (Git Bash, WSL or Linux)
   docs/screenshots/        photos for the gallery
@@ -524,7 +525,8 @@ with glowing seams for lids, heat shimmer and rising sparks.
 **Music settings:** `style` (**N**, 21 styles, listed below), `audio` (1,
 the default here, reacts to music from your WLED lights; 0 shows only the
 calm idle), `react` (how strongly it responds), `speed`, `theme` (**M**:
-the eight shared colour themes), `bright`. Every style has a slow idle of
+the eight shared colour themes, then 8 album: the colours of what your
+HEOS amp is playing, see [Now playing](#now-playing-from-a-heos-amp)), `bright`. Every style has a slow idle of
 its own for when no music is playing, and the change between the two is
 eased over about a second. Nothing flashes: beats swell, move and light
 small areas, and sound changes the overall brightness by 15% at most.
@@ -694,6 +696,92 @@ they can be lifted into another project.
 **Credit.** The sound comes from [WLED](https://kno.wled.ge)'s AudioReactive
 Audio Sync (V2). No WLED code is included: the packet format follows WLED's
 public Sound Sync docs and was checked against live packets.
+
+## Now playing from a HEOS amp
+
+If your amplifier or streamer speaks HEOS (Denon and Marantz network
+models), `tools/nowplaying/nowplaying.py` follows what it is playing and
+hands it to the dome:
+
+* **the cover**, downloaded once, cached in `data/nowplaying/cache/` and
+  resized to 512 x 512 (`data/nowplaying/art.rgba`, read straight into a
+  texture). The Pi 3's GPU only mipmaps power-of-two sizes, covers come at
+  300 to 640 pixels, and the front of the globe is about 600 pixels across,
+  so 512 is the useful size. Covers stay on the Pi and are never committed.
+* **the palette**: four colours from the cover. Music's theme 8, album,
+  is built from them, so any Music style takes on the album's colours.
+  With no cover it falls back to a neutral set.
+* **the details** (title, artist, album or station, source) in
+  `data/nowplaying/now.txt`, and the **progress** about once a second.
+* **switching**: when music starts it shows the music scene (Music for now),
+  and when it has been paused or stopped for five minutes it puts back the
+  scene and style that were there. It never switches within ten minutes of
+  you changing scene by hand (keyboard or remote), never over a calibration
+  grid, and if you change scene while it has the dome it leaves the dome
+  alone until the music has stopped for a while. The playlist waits while
+  the music has the dome and carries on afterwards. `--no-auto` turns
+  switching off.
+
+It is **read only**: it only asks the amp what it is playing and listens
+for changes. It cannot play, pause, skip, change the volume or the input:
+anything else is refused before it is sent (`ALLOWED` in `heos.py`).
+
+What each source does is in `tools/nowplaying/sources.json`: streaming
+services show the cover, radio shows the station's picture if there is
+one, phono is a record (no cover needed), the CD player on the coaxial
+input is a disc (keeps the current colours), the optical input gives the
+dome back after ten seconds, and anything unknown shows what there is.
+For inputs where the amp cannot tell whether music is playing (a
+turntable, a CD player), sound from your WLED audio sync counts as
+playing. Copy the file, change it and pass it with `--config` to suit
+your own inputs. The times are in there too.
+
+```bash
+cd ~/hemisphere
+venv/bin/pip install -r tools/nowplaying/requirements.txt
+HEOS_HOST=<your amp's address> venv/bin/python3 tools/nowplaying/nowplaying.py
+```
+
+Leave out `HEOS_HOST` and it searches the network. `HEOS_PLAYER` (or
+`--player`) picks one player by name if you have several, `--once` prints
+what is playing and stops, and `--dry-run` prints the dome commands
+instead of sending them. To run it at boot, put the address in
+`/etc/default/hemisphere-nowplaying` (as `HEOS_HOST=...`), not in the repo:
+
+```bash
+sudo cp tools/nowplaying/nowplaying.service /etc/systemd/system/hemisphere-nowplaying.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now hemisphere-nowplaying
+journalctl -u hemisphere-nowplaying -f
+```
+
+**Control commands** it uses, for anyone writing their own feed (UDP on
+`127.0.0.1:5005`, one per packet): `palette RRGGBB RRGGBB RRGGBB RRGGBB`
+(brightest first, or `palette off`), `np <serial>` (new `now.txt` and
+`art.rgba` are ready), `progress <pos_ms> <dur_ms> <play|pause|stop>`, and
+`scene <n> <by>`, where `by` labels who changed the scene (`state` reports
+it as `by`, with `since` in seconds). Scenes read it all with
+`dome_nowplaying()` in `dome/dome.h`.
+
+**Testing without the amp.** `tools/nowplaying/fakeheos.py` is a fake
+HEOS device that plays made-up tracks with made-up covers drawn at run
+time; point the tool at it with `HEOS_HOST=127.0.0.1:1255`. The tests use
+only the fake and recorded, anonymised answers, and fail if anything
+tries to reach the network:
+
+```bash
+venv/bin/pip install -r tools/nowplaying/requirements-dev.txt
+venv/bin/python -m pytest tools/nowplaying/tests
+```
+
+`--record DIR --seconds N` saves what your amp says as new test fixtures,
+with player names, addresses, serial numbers, model, network and any
+account details replaced, then checks the file for each of those values
+and prints found or not found.
+
+**Credit.** The protocol follows the HEOS CLI Protocol Specification
+published by Denon (HEOS is a trademark of its owners). No HEOS code is
+included.
 
 ## Web remote
 
@@ -1076,5 +1164,9 @@ These environment variables are for testing and previewing:
   (CC0). Contains modified EUMETSAT data.
 * Aurora forecast: [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov/products/aurora-30-minute-forecast) (OVATION model).
 * Storm tracks: [NOAA NCEI IBTrACS](https://www.ncei.noaa.gov/products/international-best-track-archive), version 4.
+* Now playing: the HEOS CLI Protocol Specification (Denon); covers and
+  palettes with [Pillow](https://python-pillow.org) (MIT-CMU licence).
+  Album covers belong to their owners and are only shown live, never
+  stored in the repo.
 
-Built with AI-assisted tooling (Claude Code).
+Built with AI-assisted tooling (Claude Code), the now-playing tool included.
