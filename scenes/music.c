@@ -1,6 +1,7 @@
 /*
  * music.c  -  Music: built for sound, from WLED audio sync (dome/audio.h).
- * N steps through the styles, M through the colour themes:
+ * N steps through the styles, M through the colour themes (the last,
+ * album, follows what is playing: see tools/nowplaying):
  *
  *   0 spectrum ring   16 bars standing in from the rim, bass at the bottom,
  *                     treble at the top, mirrored left and right; at full
@@ -183,6 +184,7 @@ static void themes_build(void)
 static void theme_rgb(float x, float out[3])
 {
     int id = (int)lroundf(L.theme);
+    if (id == DOME_THEME_ALBUM) { dome_album_rgb(x, out); return; }
     id = id < 0 ? 0 : id >= DOME_THEMES ? DOME_THEMES - 1 : id;
     x -= floorf(x);
     float fx = x * THEME_STEPS;
@@ -1352,8 +1354,9 @@ static Param P[] = {
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off (the idle look), 1 reacts to music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it reacts to the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the motion" },
-    { "theme",  &L.theme,  1.0f, 0.0f, 7.0f, 0,
-      "0 rainbow, 1 fire, 2 ice, 3 neon, 4 aurora, 5 gold, 6 amber, 7 jewel (M)" },
+    { "theme",  &L.theme,  1.0f, 0.0f, 8.0f, 0,
+      "0 rainbow, 1 fire, 2 ice, 3 neon, 4 aurora, 5 gold, 6 amber, 7 jewel, "
+      "8 album (the colours of what is playing, from tools/nowplaying) (M)" },
     { "bright", &L.bright, 0.05f, 0.2f, 2.0f, 0, "brightness" },
 };
 
@@ -1435,8 +1438,9 @@ static int key(SDL_Keycode k, int shift)
         return 1;
     }
     if (k == SDLK_m) {
-        L.theme = (float)(((int)lroundf(L.theme) + 1) % DOME_THEMES);
-        printf("Music: %s colours\n", DOME_THEME_NAMES[(int)L.theme]);
+        L.theme = (float)(((int)lroundf(L.theme) + 1) % (DOME_THEMES + 1));
+        printf("Music: %s colours\n", (int)L.theme == DOME_THEME_ALBUM ? "album"
+                                      : DOME_THEME_NAMES[(int)L.theme]);
         return 1;
     }
     return 0;
