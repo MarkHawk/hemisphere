@@ -33,6 +33,12 @@
  *                   bass; empty cells are sea in the theme's colours.
  *                   Every cover that arrives is added, whatever style is
  *                   showing; the atlas starts afresh at midnight
+ *   4 art into particles  the cover as a grid of dots (dots: 96 or 128
+ *                   across) filling the dome; each moves with the band of
+ *                   its distance from the middle (bass at the centre,
+ *                   treble at the rim), out and round by its own amount,
+ *                   and they settle back into the cover between phrases
+ *                   (every 16 beats, or 8 seconds without a tempo)
  *
  * Shared by every style:
  *   the turn        the globe has two faces. A new cover is loaded into
@@ -63,8 +69,8 @@
 #define ART 512                         /* one face: data/nowplaying/art.rgba */
 #define TURN_SECS 2.4f
 
-static struct { float style, audio, react, speed, theme, bright, text; } L =
-    { 0.0f, 1.0f, 1.0f, 1.0f, 8.0f, 1.0f, 1.0f };
+static struct { float style, audio, react, speed, theme, bright, text, dots; } L =
+    { 0.0f, 1.0f, 1.0f, 1.0f, 8.0f, 1.0f, 1.0f, 128.0f };
 
 /* ---- what every style's shader gets ------------------------------- */
 /* u_turn turns the dome's view into the globe's frame (+Z the pole of the
@@ -253,6 +259,13 @@ static const char ATLAS[] =
     "  return vec4(col3 * u_bright, 1.0);\n"
     "}\n";
 
+/* ---- 4: art into particles: a dim sky under the dots ----------------- */
+static const char PARTS[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  vec3 col = theme(u_theme, 0.45 - view.z * 0.25) * (0.10 + 0.05 * u_live);\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
 typedef struct {
     const char *name;
     const char *glsl;
@@ -264,19 +277,23 @@ static void album_points(const DomeFrame *f);
 static void record_points(const DomeFrame *f);
 static void day_points(const DomeFrame *f);
 static void rim_text(const DomeFrame *f);
+static void parts_points(const DomeFrame *f);
+static void parts_colours(int k);
+static void dome_at(float r, float th, float out[3]);
 
 static const Style STYLES[] = {
     { "album globe",   ALBUM,  NULL, album_points },
     { "record planet", RECORD, DISC, record_points },
     { "track as a day", DAY,   NULL, day_points },
     { "album atlas",   ATLAS,  NULL, rim_text },
+    { "art into particles", PARTS, NULL, parts_points },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
 static GLuint g_prog[NSTYLE], g_prog_disc[NSTYLE];
 
 static Param P[] = {
-    { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0, "0 album globe, 1 record planet (a CD for a disc), 2 track as a day, 3 album atlas (N)" },
+    { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0, "0 album globe, 1 record planet (a CD for a disc), 2 track as a day, 3 album atlas, 4 art into particles (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off, 1 moves with the music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it moves with the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the slow motion" },
@@ -285,6 +302,7 @@ static Param P[] = {
       "8 album (the cover's colours) (M)" },
     { "bright", &L.bright, 0.05f, 0.2f, 2.0f, 0, "brightness" },
     { "text",   &L.text,   1.0f, 0.0f, 1.0f, 0, "1 shows the title and artist round the rim" },
+    { "dots",   &L.dots,   32.0f, 96.0f, 128.0f, 0, "style 4: dots across the cover, 96 or 128" },
 };
 
 static int style(void)
@@ -454,6 +472,114 @@ static void atlas_matrix(float dt, mat3 out)
     memcpy(out, m, sizeof m);
 }
 
+/* ---- 4: the dots --------------------------------------------------- */
+#define PN_MAX 128
+typedef struct { float home[3], er[3], et[3], r, kr, kt; int band; } Dot;
+static Dot   g_dot[PN_MAX * PN_MAX];
+static int   g_pn;                       /* dots across, as laid out */
+static float g_pcol[2][PN_MAX * PN_MAX][3];  /* colours: [0] now, [1] before */
+static int   g_pcover;                   /* 1 once a cover has been taken */
+static unsigned char *g_cover;           /* the cover now, 512 x 512 RGBA */
+static DomePoints g_parts;
+static float g_beats, g_last_phase;      /* beats counted, for phrases */
+
+/* each dot's place: the cover's square stretched to the disc (as the
+ * faces of style 0), then spread evenly in angle to the rim */
+static void parts_layout(int n)
+{
+    g_pn = n;
+    for (int j = 0; j < n; j++)
+        for (int i = 0; i < n; i++) {
+            Dot *d = &g_dot[j * n + i];
+            float sx = (i + 0.5f) / n * 2.0f - 1.0f, sy = 1.0f - (j + 0.5f) / n * 2.0f;
+            float u = sx * sqrtf(1.0f - sy * sy * 0.5f), v = sy * sqrtf(1.0f - sx * sx * 0.5f);
+            float r = sqrtf(u * u + v * v) * 0.985f, th = atan2f(v, u);
+            dome_at(r, th, d->home);
+            float a = r * DOME_PI * 0.5f;
+            d->er[0] = cosf(a) * cosf(th); d->er[1] = cosf(a) * sinf(th); d->er[2] = -sinf(a);
+            d->et[0] = -sinf(th); d->et[1] = cosf(th); d->et[2] = 0.0f;
+            d->r = r;
+            int b = (int)(r * 16.0f);
+            d->band = b > 15 ? 15 : b;
+            unsigned h = (unsigned)(i * 73856093u) ^ (unsigned)(j * 19349663u);
+            h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+            d->kr = 0.4f + 0.6f * (float)(h & 1023) / 1023.0f;
+            d->kt = ((float)((h >> 10) & 1023) / 1023.0f - 0.5f) * 1.6f;
+        }
+    for (int k = 0; k < 2; k++) parts_colours(k);
+}
+
+/* the colours of slot k (0 now, 1 before) from the cover, or the idle rings */
+static void parts_colours(int k)
+{
+    int n = g_pn;
+    for (int j = 0; j < n; j++)
+        for (int i = 0; i < n; i++) {
+            float *c = g_pcol[k][j * n + i];
+            if (g_pcover && k == 0) {
+                int x = (int)((i + 0.5f) / n * ART), y = (int)((j + 0.5f) / n * ART);
+                const unsigned char *px = g_cover + ((size_t)y * ART + x) * 4;
+                c[0] = px[0] / 255.0f; c[1] = px[1] / 255.0f; c[2] = px[2] / 255.0f;
+            } else if (k == 0) {
+                dome_theme_rgb((int)lroundf(L.theme), g_dot[j * n + i].r * 0.55f, c);
+                for (int q = 0; q < 3; q++) c[q] = 0.5f * (c[q] > 1.0f ? 1.0f : c[q]);
+            }
+        }
+}
+
+/* a new cover: the old colours move to slot 1 for the turn */
+static void parts_cover(void)
+{
+    memcpy(g_cover, g_buf, (size_t)ART * ART * 4);
+    if (!g_pn) return;
+    memcpy(g_pcol[1], g_pcol[0], sizeof g_pcol[0]);
+    g_pcover = 1;
+    parts_colours(0);
+}
+
+static void parts_points(const DomeFrame *f)
+{
+    int want = L.dots > 112.0f ? 128 : 96;
+    if (want != g_pn) parts_layout(want);
+    const Audio *a = &f->audio;
+    /* phrases: 16 beats; the dots move most mid-phrase and settle back
+     * into the cover at each end. Without a tempo, 8 second phrases */
+    if (a->bpm > 0.0f) {
+        if (a->phase < g_last_phase) g_beats += 1.0f;
+        g_last_phase = a->phase;
+    } else g_beats += f->dt * 2.0f;
+    float ph = fmodf(g_beats + (a->bpm > 0.0f ? a->phase : 0.0f), 16.0f) / 16.0f;
+    float env = sinf(ph * DOME_PI);
+    float amp = L.audio * L.react * env * 0.16f;
+    /* the turn between covers: the old dots go off to the right, the new
+     * come in from the left */
+    float tt = g_turn_t < 1.0f ? ease(g_turn_t) : 1.0f;
+    float rot = tt < 0.5f ? tt * DOME_PI : (tt - 1.0f) * DOME_PI;
+    int slot = (g_turn_t < 1.0f && tt < 0.5f) ? 1 : 0;
+    float cr = cosf(rot), sr = sinf(rot);
+    dome_points_clear(&g_parts);
+    int n = g_pn * g_pn;
+    for (int k = 0; k < n; k++) {
+        const Dot *d = &g_dot[k];
+        float m = a->band[d->band] * amp;
+        float o_r = m * d->kr * 0.12f / 0.16f, o_t = m * d->kt * 0.10f / 0.16f;
+        float x = d->home[0] - d->er[0] * o_r + d->et[0] * o_t;
+        float y = d->home[1] - d->er[1] * o_r + d->et[1] * o_t;
+        float z = d->home[2] - d->er[2] * o_r + d->et[2] * o_t;
+        float xr = x * cr + z * sr, zr = -x * sr + z * cr;
+        if (zr < 0.0f) continue;                  /* round the back */
+        const float *c = g_pcol[slot][k];
+        float g = g_show > 0.0f ? (g_pcover ? g_dim : 1.0f) : 1.0f;
+        dome_points_push(&g_parts, xr, y, zr, c[0] * g, c[1] * g, c[2] * g, 1.0f);
+    }
+    dome_points_upload(&g_parts);
+    mat3 still;
+    m3_identity(still);
+    float size = g_pn == 128 ? 5.5f : 7.0f;
+    dome_draw_points(&g_parts, still, f->fade, size);
+    rim_text(f);
+}
+
 /* new details from the tool: load the cover into the face behind and
  * turn, or only change the text if the cover is the same */
 static void take_new(void)
@@ -467,7 +593,7 @@ static void take_new(void)
     g_txt_again = 1.6f;
     g_text_a = 0.0f;
     if (same) return;                    /* a station's next song: text only */
-    if (sum) { art_upload(back); atlas_add(); }
+    if (sum) { parts_cover(); art_upload(back); atlas_add(); }
     g_has[back] = sum != 0;
     g_sum[back] = sum;
     g_turn_from = g_angle;
@@ -722,6 +848,8 @@ static void init(void)
     dome_points_init(&g_txt, 40000);
     dome_points_init(&g_arm, 2000);
     dome_points_init(&g_moon, 1000);
+    dome_points_init(&g_parts, PN_MAX * PN_MAX + 16);
+    g_cover = calloc((size_t)ART * ART * 4, 1);
 }
 
 static void draw(const DomeFrame *f)
