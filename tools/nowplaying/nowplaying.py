@@ -333,6 +333,7 @@ def main(argv=None):
     ap.add_argument("--record", metavar="DIR")
     ap.add_argument("--seconds", type=int, default=120)
     args = ap.parse_args(argv)
+    sys.stdout.reconfigure(line_buffering=True)     # logs show at once under systemd
     host = args.host
     if not host:
         print("No HEOS_HOST given: searching the network...")
