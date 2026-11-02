@@ -1080,8 +1080,11 @@ that animates its own uniforms in `update()`. A scene is:
 2. Optionally, a `surface()` function in GLSL, built with
    `dome_surface_program()` and drawn between `dome_surface_begin()` and
    `dome_surface_end()`. Set your own uniforms in between; texture units 1
-   and up are yours. `dome_surface_program_themed()` adds ready-made noise
-   helpers and the shared colour themes (`theme(id, x)`); see `plasma.c`.
+   to 6 are yours (the core keeps the last one, 7, for the themes).
+   `dome_surface_program_themed()` adds ready-made noise helpers and the
+   shared colour themes (`theme(id, x)`); see `plasma.c`. The themes are a
+   table drawn once at start, so every theme costs one texture read;
+   `dome_theme_rgb()` gives the same colours on the CPU, for dots.
 3. Optionally, dots: `dome_points_init`, `dome_points_line`,
    `dome_points_upload`, then `dome_draw_points` each frame.
 4. Optionally, text: `dome_text_block` for lines across the equator (it
@@ -1114,6 +1117,7 @@ These environment variables are for testing and previewing:
 | `DOME_OVERLAY=1` | Start with the globe grid drawn over the scene (as if **O** had been pressed) |
 | `DOME_SHOT=n` | Save frame n to `shot.ppm` and quit |
 | `DOME_AUDIO_DEBUG=1` | Print the sound levels, beat and tempo twice a second (see "Sound from WLED") |
+| `DOME_THEME_CHECK=1` | At start, draw every colour theme both ways (its formula and the lookup table) and print the largest difference: about 0.008, a little more at jewel's sharp edges |
 
 ## Debugging notes
 
