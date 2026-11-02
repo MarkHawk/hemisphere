@@ -4,7 +4,7 @@ classify() maps what the amp is playing to a behaviour, using the rules
 in sources.json. Switcher decides when to change scene:
 
   take over    the amp has been playing for settle_seconds on a source
-               that shows (album, radio, record, default), and nobody
+               that shows (album, radio, record, disc, default), and nobody
                changed the scene by hand (key or remote) in the last
                hold_minutes, and no calibration grid is up. The scene it
                replaced, and that scene's style, are remembered.
@@ -24,7 +24,7 @@ the tests); the time is passed in, so the tests need not wait.
 import json
 import pathlib
 
-SHOWS = {"album", "radio", "record", "default"}
+SHOWS = {"album", "radio", "record", "disc", "default"}
 BEHAVIOURS = SHOWS | {"release", "off"}
 HAND = {"key", "remote"}
 BY = "nowplaying"

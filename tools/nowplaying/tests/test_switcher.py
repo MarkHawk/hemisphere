@@ -57,8 +57,8 @@ def run(sw, dome, t0, t1, playing, behaviour, step=1.0):
 # ---- the source rules ---------------------------------------------
 @pytest.mark.parametrize("media,want", [
     ({"sid": 1027, "mid": "inputs/phono", "type": "station"}, "record"),
+    ({"sid": 1027, "mid": "inputs/coax_in_1", "type": "station"}, "disc"),
     ({"sid": 1027, "mid": "inputs/optical_in_1", "type": "station"}, "release"),
-    ({"sid": 1027, "mid": "inputs/coax_in_2", "type": "station"}, "release"),
     ({"sid": 1027, "mid": "inputs/cd", "type": "station"}, "default"),
     ({"sid": 1027, "mid": "inputs/aux_in_1", "type": "station"}, "default"),
     ({"sid": 4, "mid": "spotify:track:x", "type": "song"}, "album"),
@@ -221,4 +221,4 @@ def test_prefers_now_playing_scene_when_present(cfg):
 
 
 def test_shows_set():
-    assert switcher.SHOWS == {"album", "radio", "record", "default"}
+    assert switcher.SHOWS == {"album", "radio", "record", "disc", "default"}

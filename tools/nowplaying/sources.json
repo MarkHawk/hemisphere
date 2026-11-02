@@ -1,7 +1,7 @@
 {
   "_about": [
     "How tools/nowplaying treats each HEOS source. Rules are tried in turn and the first that matches wins: sid is the HEOS source number, mid_prefix the start of the media id (inputs are 'inputs/<name>'), type 'song' or 'station'.",
-    "Behaviours: album (show the cover), radio (station art if there is any), record (the record planet, no cover needed), default (show whatever there is), release (give the dome back after release_seconds), off (leave the dome alone).",
+    "Behaviours: album (show the cover), radio (station art if there is any), record (the record planet, no cover needed), disc (a CD: no cover or progress expected, keeps the current colours), default (show whatever there is), release (give the dome back after release_seconds), off (leave the dome alone).",
     "audio_means_playing: for inputs where the amp cannot tell if music is playing (a turntable), sound from the WLED audio sync counts as playing.",
     "Your own changes: copy this file, edit it, and pass it with --config."
   ],
@@ -13,10 +13,8 @@
   "scenes": ["NOW PLAYING", "MUSIC"],
   "rules": [
     {"mid_prefix": "inputs/phono", "name": "phono", "behaviour": "record", "audio_means_playing": true},
+    {"mid_prefix": "inputs/coax", "name": "CD (coaxial)", "behaviour": "disc", "audio_means_playing": true},
     {"mid_prefix": "inputs/optical", "name": "optical in", "behaviour": "release"},
-    {"mid_prefix": "inputs/coax", "name": "coaxial in", "behaviour": "release"},
-    {"mid_prefix": "inputs/tv", "name": "TV", "behaviour": "release"},
-    {"mid_prefix": "inputs/hdmi", "name": "HDMI", "behaviour": "release"},
     {"mid_prefix": "inputs/cd", "name": "CD", "behaviour": "default", "audio_means_playing": true},
     {"mid_prefix": "inputs/", "name": "analogue in", "behaviour": "default", "audio_means_playing": true},
     {"sid": 3, "name": "TuneIn", "behaviour": "radio"},
