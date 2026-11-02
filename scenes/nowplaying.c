@@ -260,10 +260,14 @@ static void turn_matrix(mat3 out)
 /* ================================================================== */
 /* Text round the rim                                                  */
 /* ================================================================== */
+/* src cut to max characters (ending "...") into dst */
 static void fit(char *dst, size_t cap, const char *src, int max)
 {
-    snprintf(dst, cap, "%s", src);
-    if ((int)strlen(dst) > max && max > 3) strcpy(dst + max - 3, "...");
+    size_t n = strlen(src);
+    if (n >= cap) n = cap - 1;
+    memcpy(dst, src, n);
+    dst[n] = 0;
+    if ((int)n > max && max > 3 && (size_t)max < cap) strcpy(dst + max - 3, "...");
 }
 
 static void album_points(const DomeFrame *f)
