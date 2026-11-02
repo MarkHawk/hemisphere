@@ -84,7 +84,7 @@ def scene():
     except (KeyError, TypeError, ValueError):
         return jsonify(ok=False, error="scene must be a number"), 400
     playlist.touch()
-    return result(send(f"scene {n}"))
+    return result(send(f"scene {n} remote"))
 
 
 @app.post("/api/key")

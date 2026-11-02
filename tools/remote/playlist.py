@@ -11,7 +11,9 @@ folder (or wherever HEMISPHERE_PLAYLIST points) and looks like this:
       "seconds": 60,            how long each item stays up
       "vary": 0,                plus or minus this many seconds, at random
       "hold": 300,              after you pick something by hand, wait this
-                                long before carrying on (0 = don't wait)
+                                long before carrying on (0 = don't wait).
+                                While tools/nowplaying shows the music it
+                                switched to, the playlist waits too.
       "items": [
         {"scene": 10, "pick": 2, "seconds": 0, "on": true},
         ...                     pick = the style (or view, or theme) to
@@ -152,6 +154,14 @@ class Playlist:
                 self.hold_until = time.monotonic() + self.cfg["hold"]
                 self.next_at = max(self.next_at, self.hold_until)
 
+    def nowplaying_has_it(self):
+        """True while tools/nowplaying is showing the music it switched to."""
+        reply = self.send("state")
+        try:
+            return json.loads(reply).get("by") == "nowplaying"
+        except (TypeError, ValueError, AttributeError):
+            return False
+
     def choose(self, step):
         items = self.cfg["items"]
         live = [i for i, it in enumerate(items) if it["on"]]
@@ -182,7 +192,7 @@ class Playlist:
         cat = self.catalog or self.get_catalog() or []
         if it["pick"] is not None and 0 <= it["scene"] < len(cat) and cat[it["scene"]].get("pick"):
             self.send(f"sset {it['scene']} {cat[it['scene']]['pick']} {it['pick']}")
-        ok = self.send(f"scene {it['scene']}") is not None
+        ok = self.send(f"scene {it['scene']} playlist") is not None
         if ok:
             self.pos = i
             self.history = (self.history + [i])[-50:]
@@ -207,6 +217,9 @@ class Playlist:
                     continue
                 now = time.monotonic()
                 if now < self.next_at or now < self.hold_until:
+                    continue
+                if self.nowplaying_has_it():
+                    self.next_at = now + 5.0     # music is on: wait until it lets go
                     continue
                 i = self.choose(1)
                 if i < 0 or not self.show(i):
