@@ -1,0 +1,12 @@
+{"heos":{"command":"system/register_for_change_events","result":"success","message":"enable=on"}}
+{"heos":{"command":"player/get_players","result":"success","message":""},"payload":[{"name":"Test Amp","pid":1234567,"model":"Test Model","version":"1.0.0","ip":"192.0.2.10","network":"wired","lineout":0,"serial":"TEST0000000"}]}
+{"heos":{"command":"player/get_play_state","result":"success","message":"pid=1234567&state=play"}}
+{"heos":{"command":"player/get_now_playing_media","result":"success","message":"pid=1234567"},"payload":{"type":"song","song":"Rock %26 Roll Test","album":"Sample Album","artist":"Sample Artist","image_url":"https://images.example.invalid/cover/abc123","mid":"spotify:track:sample","qid":1,"sid":4,"album_id":"sample-album"},"options":[]}
+{"heos":{"command":"event/player_now_playing_progress","message":"pid=1234567&cur_pos=61000&duration=215000"}}
+{"heos":{"command":"event/player_state_changed","message":"pid=1234567&state=pause"}}
+{"heos":{"command":"event/player_now_playing_changed","message":"pid=1234567"}}
+{"heos":{"command":"player/get_now_playing_media","result":"success","message":"pid=1234567"},"payload":{"type":"station","song":"","station":"Phono","album":"","artist":"","image_url":"","mid":"inputs/phono","sid":1027},"options":[]}
+{"heos":{"command":"player/get_now_playing_media","result":"success","message":"pid=1234567"},"payload":{"type":"station","song":"Sample Song","station":"Sample Radio 1","album":"","artist":"Sample Presenter","image_url":"https://images.example.invalid/station/s1.png","mid":"s00000","qid":1,"sid":3},"options":[]}
+{"heos":{"command":"event/players_changed","message":""}}
+{"heos":{"command":"browse/browse","result":"success","message":"command under process&sid=1"}}
+{"heos":{"command":"player/get_volume","result":"fail","message":"eid=2&text=ID Not Valid"}}
