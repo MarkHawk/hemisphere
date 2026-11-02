@@ -1,0 +1,26 @@
+# Hemisphere now playing: follows a HEOS amp (read only) for the dome.
+#   Put the amp's address in /etc/default/hemisphere-nowplaying (not in
+#   this file), for example:
+#       HEOS_HOST=<your amp's address>
+#       HEOS_PLAYER=<its name, if you have more than one>
+#   sudo cp tools/nowplaying/nowplaying.service /etc/systemd/system/hemisphere-nowplaying.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now hemisphere-nowplaying
+#   journalctl -u hemisphere-nowplaying -f        (to watch what it is doing)
+# Change User and the paths if your Pi's user or folder differ.
+[Unit]
+Description=Hemisphere now playing (HEOS, read only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/hemisphere
+EnvironmentFile=-/etc/default/hemisphere-nowplaying
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/pi/hemisphere/venv/bin/python3 /home/pi/hemisphere/tools/nowplaying/nowplaying.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
