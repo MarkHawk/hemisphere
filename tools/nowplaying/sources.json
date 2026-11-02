@@ -16,7 +16,6 @@
   "rules": [
     {"mid_prefix": "inputs/phono", "name": "phono", "behaviour": "record", "audio_means_playing": true},
     {"mid_prefix": "inputs/coax", "name": "CD (coaxial)", "behaviour": "disc", "audio_means_playing": true},
-    {"mid_prefix": "inputs/optical", "name": "optical in", "behaviour": "release"},
     {"mid_prefix": "inputs/cd", "name": "CD", "behaviour": "default", "audio_means_playing": true},
     {"mid_prefix": "inputs/", "name": "analogue in", "behaviour": "default", "audio_means_playing": true},
     {"sid": 3, "name": "TuneIn", "behaviour": "radio"},

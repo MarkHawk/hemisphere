@@ -120,7 +120,7 @@ def test_full_cycle(rig):
     assert all(c.split("?")[0][7:] in heos.ALLOWED for c in amp.commands)
 
 
-def test_cd_keeps_colours_optical_releases_phono_shows_without_art(rig):
+def test_cd_keeps_colours_release_gives_back_phono_shows_without_art(rig):
     amp, covers, hemi, np, stop, data, logs = rig
     amp.play(song(covers, 3))
     threading.Thread(target=np.run, args=(stop,), daemon=True).start()
@@ -131,6 +131,7 @@ def test_cd_keeps_colours_optical_releases_phono_shows_without_art(rig):
     assert hemi.wait_for(lambda: "behaviour=disc" in (data / "now.txt").read_text())
     assert [c for c in hemi.got if c.startswith("palette ")][-1] == pal   # colours kept
     assert hemi.scene == 2                                                # still shown
+    np.cfg["rules"].insert(0, {"mid_prefix": "inputs/optical", "behaviour": "release"})
     amp.play({"type": "station", "song": "Test Amp - Optical", "station": "Test Amp - Optical",
               "image_url": "", "mid": "inputs/optical_in_1", "sid": 1027})
     assert hemi.wait_for(lambda: hemi.scene == 1 and hemi.by == "auto", timeout=4)

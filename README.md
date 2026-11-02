@@ -729,8 +729,9 @@ anything else is refused before it is sent (`ALLOWED` in `heos.py`).
 What each source does is in `tools/nowplaying/sources.json`: streaming
 services show the cover, radio shows the station's picture if there is
 one, phono is a record (no cover needed), the CD player on the coaxial
-input is a disc (keeps the current colours), the optical input gives the
-dome back after ten seconds, and anything unknown shows what there is.
+input is a disc (keeps the current colours), other inputs show what
+there is, and so does anything unknown. A source set to `release` (none
+by default; a TV input, say) gives the dome back after ten seconds.
 For inputs where the amp cannot tell whether music is playing (a
 turntable, a CD player), sound from your WLED audio sync counts as
 playing. Copy the file, change it and pass it with `--config` to suit
