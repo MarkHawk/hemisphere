@@ -19,6 +19,13 @@
  *                   down to a stop. For a CD (source behaviour "disc")
  *                   it is a silver disc with a rainbow sheen instead,
  *                   its label printed in the current palette, no tonearm
+ *   2 track as a day the cover on the globe, lit by a sun that crosses it
+ *                   through the track: dawn on the left at the start, noon
+ *                   over the front, dusk on the right at the end (a four
+ *                   minute day when the length is not known). Lights come
+ *                   on across the night side, where the cover is bright,
+ *                   twinkling with the treble; a small moon makes one
+ *                   orbit per track and glows on the beat
  *
  * Shared by every style:
  *   the turn        the globe has two faces. A new cover is loaded into
@@ -61,10 +68,10 @@ static const char NP_LIB[] =
     "uniform mat3  u_turn;\n"
     "uniform vec2  u_has;\n"
     "uniform float u_t, u_bright, u_theme, u_show, u_zoom, u_dim;\n"
-    "uniform float u_bass, u_mid, u_live;\n"
+    "uniform float u_bass, u_mid, u_air, u_live;\n"
     "uniform vec2  u_spin;\n"
     "uniform float u_swell, u_ph;\n"
-    "uniform vec3  u_c0, u_c1;\n"
+    "uniform vec3  u_c0, u_c1, u_c2, u_sun;\n"
     "uniform sampler2D u_art;\n"
     "float facos(float x){\n"
     "  float a = abs(x);\n"
@@ -168,6 +175,30 @@ static const char DISC[] =
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
+/* ---- 2: track as a day ---------------------------------------------- */
+/* the cover's alpha holds a baked noise (see art_upload), placing the
+ * lights without another texture read */
+static const char DAY[] =
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  float back, r;\n"
+    "  vec2 uv = face(u_turn * view, back, r);\n"
+    "  vec4 tex = texture2D(u_art, vec2((uv.x + back) * 0.5, uv.y));\n"
+    "  float has = mix(u_has.x, u_has.y, back) * u_show;\n"
+    "  vec3 idle = theme(u_theme, r * 0.55 - u_t * 0.025) * 0.6;\n"
+    "  vec3 base = mix(idle, tex.rgb * u_dim, has);\n"
+    "  float l = dot(view, u_sun);\n"
+    "  float day = smoothstep(-0.10, 0.18, l);\n"
+    "  vec3 col = base * (0.10 + 0.95 * day) + u_c1 * clamp(1.0 - abs(l) * 6.0, 0.0, 1.0) * 0.22;\n"
+    /* lights on the night side where the cover is bright, twinkling
+     * with the treble */
+    "  float lum = dot(base, vec3(0.3, 0.5, 0.2));\n"
+    "  float city = step(0.9, tex.a) * smoothstep(0.2, 0.5, lum) * has;\n"
+    "  float tw = 0.7 + 0.8 * u_air * (abs(fract(tex.a * 37.0 + u_ph) - 0.5) * 2.0);\n"
+    "  col += u_c2 * city * tw * (1.0 - day);\n"
+    "  col = mix(col, u_c0, smoothstep(0.42, 0.13, view.z) * 0.8);\n"
+    "  return vec4(col * u_bright, 1.0);\n"
+    "}\n";
+
 typedef struct {
     const char *name;
     const char *glsl;
@@ -177,17 +208,19 @@ typedef struct {
 
 static void album_points(const DomeFrame *f);
 static void record_points(const DomeFrame *f);
+static void day_points(const DomeFrame *f);
 
 static const Style STYLES[] = {
     { "album globe",   ALBUM,  NULL, album_points },
     { "record planet", RECORD, DISC, record_points },
+    { "track as a day", DAY,   NULL, day_points },
 };
 #define NSTYLE ((int)(sizeof STYLES / sizeof STYLES[0]))
 
 static GLuint g_prog[NSTYLE], g_prog_disc[NSTYLE];
 
 static Param P[] = {
-    { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0, "0 album globe, 1 record planet (a CD for a disc) (N)" },
+    { "style",  &L.style,  1.0f, 0.0f, NSTYLE - 1, 0, "0 album globe, 1 record planet (a CD for a disc), 2 track as a day (N)" },
     { "audio",  &L.audio,  1.0f, 0.0f, 1.0f, 0, "0 off, 1 moves with the music (WLED audio sync)" },
     { "react",  &L.react,  0.1f, 0.0f, 2.0f, 0, "how strongly it moves with the music" },
     { "speed",  &L.speed,  0.1f, 0.1f, 3.0f, 0, "speed of the slow motion" },
@@ -251,8 +284,21 @@ static unsigned art_read(void)
     return h ? h : 1;
 }
 
+/* a sparse noise in the cover's alpha, for the lights of style 2: one
+ * value per 2 x 2 block of texels */
+static void bake_noise(void)
+{
+    for (int y = 0; y < ART; y++)
+        for (int x = 0; x < ART; x++) {
+            unsigned h = (unsigned)(x >> 1) * 73856093u ^ (unsigned)(y >> 1) * 19349663u;
+            h ^= h >> 13; h *= 0x5bd1e995u; h ^= h >> 15;
+            g_buf[((size_t)y * ART + x) * 4 + 3] = (unsigned char)(h & 255);
+        }
+}
+
 static void art_upload(int slot)
 {
+    bake_noise();
     glBindTexture(GL_TEXTURE_2D, g_art_tex);
     glTexSubImage2D(GL_TEXTURE_2D, 0, slot * ART, 0, ART, ART, GL_RGBA, GL_UNSIGNED_BYTE, g_buf);
     glGenerateMipmap(GL_TEXTURE_2D);
@@ -342,6 +388,25 @@ static void update(const DomeFrame *f)
     g_spin = fmodf(g_spin + g_w * dt, 2.0f * DOME_PI);
 }
 
+/* how far through the track, 0..1; without a length, through a span of
+ * `span` seconds that repeats */
+static float track_progress(float span)
+{
+    const DomeNowPlaying *np = dome_nowplaying();
+    float p = np->duration > 0.0f ? np->position / np->duration
+                                  : fmodf(np->position, span) / span;
+    return p < 0.0f ? 0.0f : p > 1.0f ? 1.0f : p;
+}
+
+/* the sun of style 2: from the left limb at the start to the right at the end */
+static void sun_dir(float out[3])
+{
+    float a = -0.5f * DOME_PI + DOME_PI * track_progress(240.0f);
+    float v[3] = { sinf(a), 0.3f, cosf(a) };
+    float n = 1.0f / sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    for (int k = 0; k < 3; k++) out[k] = v[k] * n;
+}
+
 /* the globe's frame for this frame: the turn, plus a slow small sway */
 static void turn_matrix(mat3 out)
 {
@@ -408,6 +473,57 @@ static void dome_at(float r, float th, float out[3])
     out[2] = cosf(a);
 }
 
+/* the moon of style 2: one orbit per track, a disc of dots shaded by
+ * the sun, glowing a little on the beat */
+static DomePoints g_moon;
+static void day_points(const DomeFrame *f)
+{
+    rim_text(f);
+    const DomeNowPlaying *np = dome_nowplaying();
+    float sun[3], c[3], e1[3], e2[3];
+    sun_dir(sun);
+    float th = DOME_PI * 0.5f - 2.0f * DOME_PI * track_progress(240.0f);
+    dome_at(0.70f, th, c);
+    /* a frame on the surface at the moon's centre */
+    e1[0] = -sinf(th); e1[1] = cosf(th); e1[2] = 0.0f;
+    e2[0] = c[1] * e1[2] - c[2] * e1[1];
+    e2[1] = c[2] * e1[0] - c[0] * e1[2];
+    e2[2] = c[0] * e1[1] - c[1] * e1[0];
+    float s1 = sun[0] * e1[0] + sun[1] * e1[1] + sun[2] * e1[2];
+    float s2 = sun[0] * e2[0] + sun[1] * e2[1] + sun[2] * e2[2];
+    float s3 = sun[0] * c[0] + sun[1] * c[1] + sun[2] * c[2];
+    float glow = 1.0f + 0.6f * g_swell;
+    float tint[3] = { 0.92f, 0.90f, 0.84f };
+    for (int k = 0; k < 3; k++) tint[k] = tint[k] * 0.8f + 0.2f * np->palette[0][k];
+    const float R = 0.055f;
+    const int N = 9;
+    dome_points_clear(&g_moon);
+    for (int j = -N; j <= N; j++)
+        for (int i = -N; i <= N; i++) {
+            float x = (float)i / N, y = (float)j / N, rr = x * x + y * y;
+            if (rr > 1.0f) continue;
+            float z = sqrtf(1.0f - rr);
+            float lit = x * s1 + y * s2 + z * s3;
+            float b = (0.12f + 0.88f * (lit < 0.0f ? 0.0f : lit)) * glow;
+            float pnt[3];
+            for (int k = 0; k < 3; k++) pnt[k] = c[k] + R * (x * e1[k] + y * e2[k]);
+            dome_points_push(&g_moon, pnt[0], pnt[1], pnt[2],
+                             tint[0] * b, tint[1] * b, tint[2] * b, 1.0f);
+        }
+    /* a faint halo that brightens on the beat */
+    for (int i = 0; i < 48; i++) {
+        float a = 2.0f * DOME_PI * i / 48.0f, pnt[3];
+        for (int k = 0; k < 3; k++)
+            pnt[k] = c[k] + R * 1.45f * (cosf(a) * e1[k] + sinf(a) * e2[k]);
+        dome_points_push(&g_moon, pnt[0], pnt[1], pnt[2], tint[0], tint[1], tint[2],
+                         0.12f + 0.45f * g_swell);
+    }
+    dome_points_upload(&g_moon);
+    mat3 still;
+    m3_identity(still);
+    dome_draw_points(&g_moon, still, f->fade * g_show, 3.5f);
+}
+
 /* the tonearm: from its pivot near the rim, lower right, to the stylus,
  * which moves in from the edge of the grooves to the label through the
  * track (a 22 minute side when the length is not known, as on phono) */
@@ -468,6 +584,7 @@ static void init(void)
     art_upload(1);
     dome_points_init(&g_txt, 40000);
     dome_points_init(&g_arm, 2000);
+    dome_points_init(&g_moon, 1000);
 }
 
 static void draw(const DomeFrame *f)
@@ -498,6 +615,13 @@ static void draw(const DomeFrame *f)
         glUniform3fv(glGetUniformLocation(p, "u_c1"), 1, c);
     }
     glUniform1f(glGetUniformLocation(p, "u_swell"), g_swell);
+    {   /* style 2: the sun, and the colour of the lights (warm, from the palette) */
+        float sun[3], c2[3];
+        sun_dir(sun);
+        glUniform3fv(glGetUniformLocation(p, "u_sun"), 1, sun);
+        for (int k = 0; k < 3; k++) c2[k] = 0.5f * np->palette[0][k] + 0.5f * (k == 0 ? 1.0f : k == 1 ? 0.78f : 0.45f);
+        glUniform3fv(glGetUniformLocation(p, "u_c2"), 1, c2);
+    }
     glUniform1f(glGetUniformLocation(p, "u_ph"), g_ph);
     dome_audio_uniforms(p, f, L.audio * L.react);
     glActiveTexture(GL_TEXTURE1);
