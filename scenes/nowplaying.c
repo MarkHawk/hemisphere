@@ -63,6 +63,7 @@ static const char NP_LIB[] =
     "uniform float u_t, u_bright, u_theme, u_show, u_zoom, u_dim;\n"
     "uniform float u_bass, u_mid, u_live;\n"
     "uniform vec2  u_spin;\n"
+    "uniform float u_swell, u_ph;\n"
     "uniform vec3  u_c0, u_c1;\n"
     "uniform sampler2D u_art;\n"
     "float facos(float x){\n"
@@ -125,16 +126,20 @@ static const char RECORD[] =
     "  float g = abs(fract(r * 120.0) - 0.5) * 2.0;\n"
     "  float gap = step(0.47, abs(fract(r * 7.0 + 0.35) - 0.5)) * step(0.36, r);\n"
     "  vec3 col = vec3(0.035) + vec3(0.03) * g * (1.0 - gap);\n"
-    "  col += (0.18 + 0.22 * u_mid) * sheen * mix(vec3(0.85), u_c1, 0.35) * (0.6 + 0.4 * g) * (1.0 - 0.6 * gap);\n"
+    /* the sheen shimmers with the mids: a soft ripple out across it */
+    "  float shim = 1.0 + 0.6 * u_mid * (abs(fract(r * 9.0 - u_ph) - 0.5) * 2.0 - 0.5);\n"
+    "  col += (0.18 + 0.22 * u_mid) * shim * sheen * mix(vec3(0.85), u_c1, 0.35) * (0.6 + 0.4 * g) * (1.0 - 0.6 * gap);\n"
     "  col += vec3(0.22) * smoothstep(0.975, 1.0, r);\n"
-    /* the label, turning: the cover, or stripes in the palette */
-    "  vec2 l = spin(q) * 3.0303;\n"
+    /* the label, turning: the cover, or stripes in the palette; it
+     * swells a little on the beat */
+    "  float lr = 0.33 * (1.0 + 0.05 * u_swell);\n"
+    "  vec2 l = spin(q) / lr;\n"
     "  vec2 uv = clamp(vec2(0.5 + 0.5 * l.x, 0.5 - 0.5 * l.y), 0.0, 1.0);\n"
     "  vec3 art = texture2D(u_art, vec2((uv.x + back) * 0.5, uv.y)).rgb * u_dim;\n"
     "  float stripe = step(0.5, fract(l.x * 1.4 + 0.25));\n"
-    "  vec3 plain = theme(u_theme, 0.06 + 0.3 * stripe + 0.12 * step(0.27, r));\n"
+    "  vec3 plain = theme(u_theme, 0.06 + 0.3 * stripe + 0.12 * step(lr * 0.82, r));\n"
     "  vec3 label = mix(plain, art, mix(u_has.x, u_has.y, back) * u_show);\n"
-    "  col = mix(col, label, 1.0 - smoothstep(0.325, 0.335, r));\n"
+    "  col = mix(col, label, 1.0 - smoothstep(lr - 0.005, lr + 0.005, r));\n"
     "  col = mix(col, vec3(0.0), 1.0 - smoothstep(0.012, 0.02, r));\n"
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
@@ -148,12 +153,13 @@ static const char DISC[] =
     /* a silver mirror, with the rainbow where the light catches the
      * tracks (the rainbow theme, whatever theme is chosen) */
     "  vec3 col = vec3(0.55, 0.57, 0.60) + 0.25 * spec;\n"
-    "  col = mix(col, theme(0.0, s * 1.6 + r * 0.9), (0.12 + 0.30 * spec) * (0.8 + 0.3 * u_mid));\n"
+    "  col = mix(col, theme(0.0, s * 1.6 + r * 0.9 + 0.12 * u_mid), (0.12 + 0.30 * spec) * (0.8 + 0.5 * u_mid));\n"
     "  col *= 0.93 + 0.07 * abs(fract(r * 60.0) - 0.5) * 2.0;\n"
     /* the printed label, turning, in the current palette */
-    "  vec2 l = spin(q) * 2.381;\n"
+    "  float lr = 0.42 * (1.0 + 0.04 * u_swell);\n"
+    "  vec2 l = spin(q) / lr;\n"
     "  vec3 label = theme(u_theme, fract(l.x * 0.9 + l.y * 0.4 + 0.5) * 0.45 + 0.05) * 0.9;\n"
-    "  col = mix(col, label, smoothstep(0.43, 0.42, r) * smoothstep(0.16, 0.17, r));\n"
+    "  col = mix(col, label, smoothstep(lr + 0.01, lr, r) * smoothstep(0.16, 0.17, r));\n"
     /* the clear hub, the hole, the bright edge */
     "  col = mix(col, vec3(0.32, 0.34, 0.37), (1.0 - smoothstep(0.155, 0.165, r)) * step(0.06, r));\n"
     "  col = mix(col, vec3(0.0), 1.0 - smoothstep(0.05, 0.06, r));\n"
@@ -261,6 +267,8 @@ static float g_turn_from, g_turn_t = 1.0f;
 static int   g_pending;                  /* new details came in mid-turn */
 static float g_t, g_sway_t;              /* the scene's clocks */
 static float g_show, g_bass;             /* eased */
+static float g_swell;                    /* the beat, its jump eased */
+static float g_ph;                       /* a clock for ripples, faster with the music */
 static float g_dim = 1.0f;
 static float g_text_a;                   /* the rim text fades in */
 static float g_spin, g_w;                /* the record's angle, and speed (rad/s) */
@@ -322,6 +330,9 @@ static void update(const DomeFrame *f)
     g_show = ease_to(g_show, live ? 1.0f : 0.0f, 1.2f, dt);
     g_dim = ease_to(g_dim, np->state == DOME_NP_PAUSE ? 0.6f : 1.0f, 0.8f, dt);
     g_bass = ease_to(g_bass, L.audio * f->audio.bass, 0.15f, dt);
+    float beat = L.audio * L.react * f->audio.beat;
+    g_swell = ease_to(g_swell, beat, beat > g_swell ? 0.06f : 0.18f, dt);
+    g_ph += dt * (0.15f + 0.6f * L.audio * f->audio.mid);
     g_text_a = ease_to(g_text_a, g_turn_t >= 1.0f ? 1.0f : 0.0f, 0.4f, dt);
     /* the record turns at 33 1/3 rpm (a CD at 30, to be seen turning),
      * runs up quickly and spins down over a couple of seconds */
@@ -486,7 +497,9 @@ static void draw(const DomeFrame *f)
         dome_theme_rgb((int)lroundf(L.theme), 0.1f, c);
         glUniform3fv(glGetUniformLocation(p, "u_c1"), 1, c);
     }
-    dome_audio_uniforms(p, f, L.audio);
+    glUniform1f(glGetUniformLocation(p, "u_swell"), g_swell);
+    glUniform1f(glGetUniformLocation(p, "u_ph"), g_ph);
+    dome_audio_uniforms(p, f, L.audio * L.react);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, g_art_tex);
     glUniform1i(glGetUniformLocation(p, "u_art"), 1);
