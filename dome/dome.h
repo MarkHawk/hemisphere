@@ -157,6 +157,11 @@ extern const char *DOME_GLSL_NOISE;
 #define DOME_THEME_ALBUM 8
 extern const char *DOME_GLSL_THEMES;
 extern const char *DOME_THEME_NAMES[DOME_THEMES];
+/* The themes are a lookup table drawn once at start, so every theme costs
+ * the same: one texture read (the core binds it in dome_surface_begin).
+ * dome_theme_rgb gives the same colours on the CPU, for dots; values can
+ * pass 1 (up to 2), as the GLSL ones do. */
+void dome_theme_rgb(int id, float x, float out[3]);
 /* a surface program with DOME_GLSL_NOISE and DOME_GLSL_THEMES included */
 GLuint dome_surface_program_themed(const char *scene_glsl);
 

@@ -60,7 +60,7 @@
  *   (acos, atan, sin) is what costs, so per pixel a style keeps to about
  *   one acos, one atan, a few lookups and one theme() call; anything that
  *   depends only on uniforms (a colour, a sin of the time) is worked out
- *   on the CPU, using the theme colours read back from the GPU at start.
+ *   on the CPU, with the same theme colours (dome_theme_rgb).
  */
 #include "../dome/dome.h"
 #include <math.h>
@@ -131,68 +131,12 @@ static void set1(GLuint p, const char *name, float v) { glUniform1f(glGetUniform
 static void set3(GLuint p, const char *name, const float *v) { glUniform3fv(glGetUniformLocation(p, name), 1, v); }
 
 /* ---- the colour themes on the CPU --------------------------------- */
-/* theme(id, x) for every theme at 256 steps of x, drawn once by the GPU
- * and read back, so dots and per-frame colours match the shaders exactly */
-#define THEME_STEPS 256
-static unsigned char g_themes[DOME_THEMES][THEME_STEPS][4];
-
-static void themes_build(void)
-{
-    static const char VS[] =
-        "attribute vec2 a_pos;\n"
-        "void main(){ gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }\n";
-    static const char FS_MAIN[] =
-        "void main(){\n"
-        "  float x = floor(gl_FragCoord.x) / 256.0, id = floor(gl_FragCoord.y);\n"
-        "  gl_FragColor = vec4(clamp(theme(id, x), 0.0, 1.0), 1.0);\n"
-        "}\n";
-    size_t n = strlen(DOME_GLSL_THEMES) + sizeof FS_MAIN + 64;
-    char *fs = malloc(n);
-    snprintf(fs, n, "precision mediump float;\n%s%s", DOME_GLSL_THEMES, FS_MAIN);
-    GLuint prog = dome_compile(VS, fs);
-    free(fs);
-
-    GLuint tex, fbo, vbo;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, THEME_STEPS, DOME_THEMES, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
-    static const float QUAD[8] = { 0, 0, 1, 0, 0, 1, 1, 1 };
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof QUAD, QUAD, GL_STATIC_DRAW);
-    glViewport(0, 0, THEME_STEPS, DOME_THEMES);
-    glDisable(GL_BLEND);
-    glUseProgram(prog);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void *)0);
-    glEnableVertexAttribArray(0);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glReadPixels(0, 0, THEME_STEPS, DOME_THEMES, GL_RGBA, GL_UNSIGNED_BYTE, g_themes);
-    /* the tiny framebuffer is kept: the Windows GL loader has no
-     * glDeleteFramebuffers, and it is made only once */
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDeleteTextures(1, &tex);
-    glDeleteBuffers(1, &vbo);
-    glDeleteProgram(prog);
-}
-
-/* the current theme at x (cyclic), 0..1 */
+/* the current theme at x (cyclic), 0..1, from the core's theme table, so
+ * dots and per-frame colours match the shaders exactly */
 static void theme_rgb(float x, float out[3])
 {
-    int id = (int)lroundf(L.theme);
-    if (id == DOME_THEME_ALBUM) { dome_album_rgb(x, out); return; }
-    id = id < 0 ? 0 : id >= DOME_THEMES ? DOME_THEMES - 1 : id;
-    x -= floorf(x);
-    float fx = x * THEME_STEPS;
-    int i = (int)fx, j = (i + 1) % THEME_STEPS;
-    float t = fx - (float)i;
-    i %= THEME_STEPS;
-    for (int k = 0; k < 3; k++)
-        out[k] = (g_themes[id][i][k] * (1.0f - t) + g_themes[id][j][k] * t) / 255.0f;
+    dome_theme_rgb((int)lroundf(L.theme), x, out);
+    for (int k = 0; k < 3; k++) out[k] = out[k] > 1.0f ? 1.0f : out[k];
 }
 
 /* ---- textures ----------------------------------------------------- */
@@ -1373,7 +1317,6 @@ static void init(void)
     snprintf(lib, n, "%s\n%s", DOME_GLSL_THEMES, MUSIC_LIB);
     for (int i = 0; i < NSTYLE; i++) g_prog[i] = dome_surface_program_lib(lib, STYLES[i].glsl);
     free(lib);
-    themes_build();
     unsigned char zero[256] = { 0 };
     g_spec_tex = tex_new(AUDIO_BANDS, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);
     g_rip_tex = tex_new(RIP_N, 1, GL_LUMINANCE, GL_CLAMP_TO_EDGE, zero);

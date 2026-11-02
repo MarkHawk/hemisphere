@@ -647,11 +647,12 @@ const char *DOME_THEME_NAMES[DOME_THEMES] = {
     "rainbow", "fire", "ice", "neon", "aurora", "gold", "amber", "jewel"
 };
 
-/* each theme is a cheap function of x; f is a smooth 1 -> 0 -> 1 ramp */
-static const char DOME_GLSL_THEMES_SRC[] =
-    "uniform vec3 u_album[4];\n"
+/* The shared themes, as formulas: each a cheap function of x, f a smooth
+ * 1 -> 0 -> 1 ramp. They are drawn once at start into a lookup texture
+ * (themes_init), so on screen every theme costs one texture read. */
+static const char THEME_MATH_SRC[] =
     "float thf(float x){ return 0.5 + 0.5 * cos(6.28318 * x); }\n"
-    "vec3 theme(float id, float x){\n"
+    "vec3 theme_math(float id, float x){\n"
     "  float f = thf(x);\n"
     "  if (id < 0.5) return 0.5 + 0.5 * cos(6.28318 * (x + vec3(0.0, 0.33, 0.67)));\n"
     "  if (id < 1.5) return vec3(min(1.0, f * 1.6), f * f * 0.95, f * f * f * f * 0.6);\n"
@@ -674,11 +675,18 @@ static const char DOME_GLSL_THEMES_SRC[] =
     "           : i < 5.0 ? vec3(0.95, 0.65, 0.10) : vec3(0.10, 0.75, 0.75);\n"
     "    return j * smoothstep(0.02, 0.10, e2);\n"                /* dark leading */
     "  }\n"
-    /* 8 album: the now-playing palette, brightest at x = 0, darkest at 0.5 */
-    "  float t = (1.0 - f) * 3.0;\n"
-    "  vec3 c = mix(u_album[0], u_album[1], clamp(t, 0.0, 1.0));\n"
-    "  c = mix(c, u_album[2], clamp(t - 1.0, 0.0, 1.0));\n"
-    "  return mix(c, u_album[3], clamp(t - 2.0, 0.0, 1.0));\n"
+    "  return vec3(0.0);\n"
+    "}\n";
+
+/* theme(id, x): one lookup in the table. Rows are themes (8 = album), x
+ * runs along a row and repeats; stored halved, as some themes pass 1.
+ * Half a texel on, as texel i holds the value at x = i / THEME_W. */
+#define THEME_W 512
+#define THEME_H 16
+static const char DOME_GLSL_THEMES_SRC[] =
+    "uniform sampler2D u_themes;\n"
+    "vec3 theme(float id, float x){\n"
+    "  return 2.0 * texture2D(u_themes, vec2(x + 0.5 / 512.0, (id + 0.5) / 16.0)).rgb;\n"
     "}\n";
 const char *DOME_GLSL_THEMES = DOME_GLSL_THEMES_SRC;
 
@@ -696,6 +704,171 @@ static float g_surface_alpha = 1.0f;
 
 static DomeNowPlaying g_np;              /* see the control channel */
 
+/* ---- the theme table ---------------------------------------------- */
+static GLuint g_theme_tex;
+static GLint  g_theme_unit = 7;          /* a unit no scene uses */
+static unsigned char g_theme_px[THEME_H][THEME_W][4];
+static float  g_theme_album_at[4][3];    /* palette in the album row */
+
+static void theme_album_row(void)
+{
+    unsigned char row[THEME_W][4];
+    for (int i = 0; i < THEME_W; i++) {
+        float c[3];
+        dome_album_rgb((float)i / THEME_W, c);
+        for (int k = 0; k < 3; k++) {
+            float v = c[k] * 0.5f * 255.0f + 0.5f;
+            row[i][k] = (unsigned char)(v < 0 ? 0 : v > 255 ? 255 : v);
+        }
+        row[i][3] = 255;
+    }
+    memcpy(g_theme_px[DOME_THEME_ALBUM], row, sizeof row);
+    memcpy(g_theme_album_at, g_np.palette, sizeof g_theme_album_at);
+    glBindTexture(GL_TEXTURE_2D, g_theme_tex);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, DOME_THEME_ALBUM, THEME_W, 1, GL_RGBA,
+                    GL_UNSIGNED_BYTE, row);
+}
+
+/* keep the album row in step with the palette as it eases */
+static void themes_update(void)
+{
+    float d = 0;
+    for (int i = 0; i < 4; i++)
+        for (int k = 0; k < 3; k++)
+            d += fabsf(g_np.palette[i][k] - g_theme_album_at[i][k]);
+    if (d > 0.003f) theme_album_row();
+}
+
+static const char THEME_VS[] =
+    "attribute vec2 a_pos;\n"
+    "void main(){ gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }\n";
+
+/* draw a full-screen quad with prog into the bound framebuffer */
+static void theme_quad(GLuint prog, int w, int h)
+{
+    glViewport(0, 0, w, h);
+    glDisable(GL_BLEND);
+    glUseProgram(prog);
+    glBindBuffer(GL_ARRAY_BUFFER, g_quad_vbo);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void *)0);
+    glEnableVertexAttribArray(0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+static GLuint theme_fbo(void)
+{
+    static GLuint fbo;                   /* kept: the Windows loader has no
+                                            glDeleteFramebuffers */
+    if (!fbo) glGenFramebuffers(1, &fbo);
+    return fbo;
+}
+
+static void themes_init(void)
+{
+    GLint units = 8;
+    glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &units);
+    g_theme_unit = units - 1 < 7 ? units - 1 : 7;
+    static const char FS_MAIN[] =
+        "void main(){\n"
+        "  float x = floor(gl_FragCoord.x) / 512.0, id = floor(gl_FragCoord.y);\n"
+        "  gl_FragColor = vec4(clamp(theme_math(id, x) * 0.5, 0.0, 1.0), 1.0);\n"
+        "}\n";
+    size_t n = sizeof THEME_MATH_SRC + sizeof FS_MAIN + 64;
+    char *fs = malloc(n);
+    snprintf(fs, n, "precision mediump float;\n%s%s", THEME_MATH_SRC, FS_MAIN);
+    GLuint prog = dome_compile(THEME_VS, fs);
+    free(fs);
+
+    glGenTextures(1, &g_theme_tex);
+    glBindTexture(GL_TEXTURE_2D, g_theme_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, THEME_W, THEME_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glBindFramebuffer(GL_FRAMEBUFFER, theme_fbo());
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_theme_tex, 0);
+    theme_quad(prog, THEME_W, DOME_THEMES);
+    memset(g_theme_px, 0, sizeof g_theme_px);
+    glReadPixels(0, 0, THEME_W, DOME_THEMES, GL_RGBA, GL_UNSIGNED_BYTE, g_theme_px);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteProgram(prog);
+    theme_album_row();
+}
+
+void dome_theme_rgb(int id, float x, float out[3])
+{
+    id = id < 0 ? 0 : id > DOME_THEME_ALBUM ? DOME_THEME_ALBUM : id;
+    x -= floorf(x);
+    float fx = x * THEME_W;
+    int i = (int)fx % THEME_W, j = (i + 1) % THEME_W;
+    float t = fx - floorf(fx);
+    for (int k = 0; k < 3; k++)
+        out[k] = 2.0f * (g_theme_px[id][i][k] * (1.0f - t) + g_theme_px[id][j][k] * t) / 255.0f;
+}
+
+/* DOME_THEME_CHECK=1: draw every theme both ways, the formula and the
+ * lookup, at x between the table's steps, and print the biggest
+ * difference (0..1 per colour channel). A test for the table. */
+static void themes_check(void)
+{
+    enum { W = 2048 };
+    static const char FS_A[] =
+        "void main(){\n"
+        "  float x = (floor(gl_FragCoord.x) + 0.37) / 2048.0, id = floor(gl_FragCoord.y);\n"
+        "  gl_FragColor = vec4(clamp(theme_math(id, x) * 0.5, 0.0, 1.0), 1.0);\n"
+        "}\n";
+    static const char FS_B[] =
+        "void main(){\n"
+        "  float x = (floor(gl_FragCoord.x) + 0.37) / 2048.0, id = floor(gl_FragCoord.y);\n"
+        "  gl_FragColor = vec4(clamp(theme(id, x) * 0.5, 0.0, 1.0), 1.0);\n"
+        "}\n";
+    static unsigned char a[DOME_THEMES][W][4], b[DOME_THEMES][W][4];
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, W, DOME_THEMES, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glBindFramebuffer(GL_FRAMEBUFFER, theme_fbo());
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    for (int pass = 0; pass < 2; pass++) {
+        const char *lib = pass ? DOME_GLSL_THEMES_SRC : THEME_MATH_SRC;
+        const char *fm = pass ? FS_B : FS_A;
+        size_t n = strlen(lib) + strlen(fm) + 64;
+        char *fs = malloc(n);
+        snprintf(fs, n, "precision mediump float;\n%s%s", lib, fm);
+        GLuint prog = dome_compile(THEME_VS, fs);
+        free(fs);
+        glUseProgram(prog);
+        glActiveTexture(GL_TEXTURE0 + g_theme_unit);
+        glBindTexture(GL_TEXTURE_2D, g_theme_tex);
+        glUniform1i(glGetUniformLocation(prog, "u_themes"), g_theme_unit);
+        glActiveTexture(GL_TEXTURE0);
+        theme_quad(prog, W, DOME_THEMES);
+        glReadPixels(0, 0, W, DOME_THEMES, GL_RGBA, GL_UNSIGNED_BYTE, pass ? b : a);
+        glDeleteProgram(prog);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteTextures(1, &tex);
+    printf("Theme check (largest difference, formula vs table, 0..1; 99th percentile):\n");
+    for (int id = 0; id < DOME_THEMES; id++) {
+        static int hist[512];
+        memset(hist, 0, sizeof hist);
+        int worst = 0;
+        for (int i = 0; i < W; i++)
+            for (int k = 0; k < 3; k++) {
+                int d = abs(a[id][i][k] - b[id][i][k]) * 2;   /* stored halved */
+                if (d > worst) worst = d;
+                hist[d]++;
+            }
+        int p99 = 0;
+        for (int c = 0, need = (int)(W * 3 * 0.99); p99 < 511 && (c += hist[p99]) < need; p99++) {}
+        printf("  %d %-8s %.3f  %.3f\n", id, DOME_THEME_NAMES[id], worst / 255.0f, p99 / 255.0f);
+    }
+    fflush(stdout);
+}
+
 void dome_surface_begin(GLuint prog, const DomeFrame *f)
 {
     g_cur_surface = prog;
@@ -711,7 +884,9 @@ void dome_surface_begin(GLuint prog, const DomeFrame *f)
     glUniform2f(U("u_size"), (float)g_map_w, (float)g_map_h);
     glUniform1f(U("u_time"), f->now);
     glUniform1f(U("u_eye"), g_view.eye);          /* viewer distance, for parallax */
-    glUniform3fv(U("u_album"), 4, &g_np.palette[0][0]);   /* theme 8 */
+    glActiveTexture(GL_TEXTURE0 + g_theme_unit);  /* theme() */
+    glBindTexture(GL_TEXTURE_2D, g_theme_tex);
+    glUniform1i(U("u_themes"), g_theme_unit);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_dirmap_tex);
     glUniform1i(U("u_dirmap"), 0);
@@ -1500,12 +1675,14 @@ int dome_run(int argc, char **argv, const char *title,
         free(vs);
     }
     surface_init();
+    np_init();                               /* the album palette, for the table */
+    themes_init();
+    if (getenv("DOME_THEME_CHECK")) themes_check();
     dome_points_init(&g_lens_grid, 40000);
     dome_points_init(&g_globe_grid, 40000);
     grids_build();
     for (int i = 0; i < nscenes; i++) if (scenes[i]->init) scenes[i]->init();
     ctl_init();
-    np_init();
     {   /* sound from WLED audio sync: DOME_AUDIO_PORT=0 turns it off */
         const char *pe = getenv("DOME_AUDIO_PORT"), *ge = getenv("DOME_AUDIO_GROUP");
         int port = pe ? atoi(pe) : 11988;
@@ -1676,6 +1853,7 @@ int dome_run(int argc, char **argv, const char *title,
         if (!paused) spin += (2.0f * PI / g_view.rev_secs) * dt;
         audio_update(&g_audio, now, dt);         /* even when paused */
         np_tick(dt);
+        themes_update();
         if (getenv("DOME_AUDIO_DEBUG") && now - audio_t >= 0.5f) {
             const Audio *a = &g_audio;
             printf("audio  bass %.2f body %.2f mid %.2f air %.2f  beat %.2f  %5.1f bpm  "
