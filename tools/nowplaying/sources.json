@@ -1,0 +1,39 @@
+{
+  "_about": [
+    "How tools/nowplaying treats each HEOS source. Rules are tried in turn and the first that matches wins: sid is the HEOS source number, mid_prefix the start of the media id (inputs are 'inputs/<name>'), type 'song' or 'station'.",
+    "Behaviours: album (show the cover), radio (station art if there is any), record (the record planet, no cover needed), default (show whatever there is), release (give the dome back after release_seconds), off (leave the dome alone).",
+    "audio_means_playing: for inputs where the amp cannot tell if music is playing (a turntable), sound from the WLED audio sync counts as playing.",
+    "Your own changes: copy this file, edit it, and pass it with --config."
+  ],
+  "auto": true,
+  "hold_minutes": 10,
+  "idle_minutes": 5,
+  "release_seconds": 10,
+  "settle_seconds": 3,
+  "scenes": ["NOW PLAYING", "MUSIC"],
+  "rules": [
+    {"mid_prefix": "inputs/phono", "name": "phono", "behaviour": "record", "audio_means_playing": true},
+    {"mid_prefix": "inputs/optical", "name": "optical in", "behaviour": "release"},
+    {"mid_prefix": "inputs/coax", "name": "coaxial in", "behaviour": "release"},
+    {"mid_prefix": "inputs/tv", "name": "TV", "behaviour": "release"},
+    {"mid_prefix": "inputs/hdmi", "name": "HDMI", "behaviour": "release"},
+    {"mid_prefix": "inputs/cd", "name": "CD", "behaviour": "default", "audio_means_playing": true},
+    {"mid_prefix": "inputs/", "name": "analogue in", "behaviour": "default", "audio_means_playing": true},
+    {"sid": 3, "name": "TuneIn", "behaviour": "radio"},
+    {"sid": 7, "name": "iHeartRadio", "behaviour": "radio"},
+    {"sid": 8, "name": "SiriusXM", "behaviour": "radio"},
+    {"sid": 1, "name": "Pandora", "behaviour": "album"},
+    {"sid": 4, "name": "Spotify", "behaviour": "album"},
+    {"sid": 5, "name": "Deezer", "behaviour": "album"},
+    {"sid": 6, "name": "Napster", "behaviour": "album"},
+    {"sid": 9, "name": "SoundCloud", "behaviour": "album"},
+    {"sid": 10, "name": "Tidal", "behaviour": "album"},
+    {"sid": 13, "name": "Amazon Music", "behaviour": "album"},
+    {"sid": 1024, "name": "local music", "behaviour": "album"},
+    {"sid": 1025, "name": "HEOS playlist", "behaviour": "album"},
+    {"sid": 1028, "name": "HEOS favourite", "behaviour": "album"},
+    {"type": "station", "name": "a station", "behaviour": "radio"},
+    {"type": "song", "name": "a song", "behaviour": "album"}
+  ],
+  "unknown": "default"
+}
