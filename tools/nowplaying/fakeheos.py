@@ -17,7 +17,8 @@ then, in another terminal,
     HEOS_HOST=127.0.0.1:1255 venv/bin/python tools/nowplaying/nowplaying.py
 
 The demo plays three made-up tracks from a streaming service, then the
-phono input, then pauses, then the TV input, round and round.
+phono input, then pauses, then a CD on the coaxial input, round and
+round. Inputs are named as a real amp names them: "<player> - Phono".
 """
 import argparse
 import http.server
@@ -311,12 +312,15 @@ def demo_steps(art):
         (song(1, "Glass Orbit", "The Test Signals", "Calibration"), "play", 40),
         (song(2, "Northern Rim", "The Test Signals", "Calibration"), "play", 40),
         (song(3, "Lens Flare Lullaby", "Fisheye Quartet", "Wide Angle"), "play", 40),
-        ({"type": "station", "song": "", "station": "Phono", "album": "", "artist": "",
-          "image_url": "", "mid": "inputs/phono", "sid": 1027}, "play", 30),
-        ({"type": "station", "song": "", "station": "Phono", "album": "", "artist": "",
-          "image_url": "", "mid": "inputs/phono", "sid": 1027}, "pause", 30),
-        ({"type": "station", "song": "", "station": "TV Audio", "album": "", "artist": "",
-          "image_url": "", "mid": "inputs/optical_in_1", "sid": 1027}, "play", 30),
+        ({"type": "station", "song": "Test Amp - Phono", "station": "Test Amp - Phono",
+          "album": "", "artist": "", "image_url": "", "album_id": "inputs/",
+          "mid": "inputs/phono", "sid": 1027}, "play", 30),
+        ({"type": "station", "song": "Test Amp - Phono", "station": "Test Amp - Phono",
+          "album": "", "artist": "", "image_url": "", "album_id": "inputs/",
+          "mid": "inputs/phono", "sid": 1027}, "pause", 30),
+        ({"type": "station", "song": "Test Amp - Coaxial In", "station": "Test Amp - Coaxial In",
+          "album": "", "artist": "", "image_url": "", "album_id": "inputs/",
+          "mid": "inputs/coax_in_1", "sid": 1027}, "play", 30),
     ]
 
 
