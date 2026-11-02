@@ -47,3 +47,6 @@ logs/
 hemisphere.log*
 .hemisphere.lock
 .hemisphere.pid
+
+# pytest
+.pytest_cache/

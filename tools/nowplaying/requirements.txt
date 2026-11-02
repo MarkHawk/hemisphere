@@ -1,0 +1,3 @@
+# tools/nowplaying, pinned. Install into the project venv:
+#   venv/bin/pip install -r tools/nowplaying/requirements.txt
+Pillow==12.3.0
