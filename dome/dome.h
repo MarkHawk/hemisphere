@@ -192,12 +192,17 @@ void dome_audio_uniforms(GLuint prog, const DomeFrame *f, float on);
  * last sent anything, -1 if it never has. The palette is four colours,
  * brightest first, easing over about a second when the album changes. */
 enum { DOME_NP_STOP, DOME_NP_PAUSE, DOME_NP_PLAY };
+enum { DOME_NP_REPEAT_OFF, DOME_NP_REPEAT_ALL, DOME_NP_REPEAT_ONE };
 typedef struct {
     int   serial;
     int   state;               /* DOME_NP_STOP, _PAUSE or _PLAY          */
     float position, duration;  /* seconds; duration 0 = unknown          */
     float age;
     int   has_palette;         /* 0 = the neutral default                */
+    int   volume;              /* 0..100, -1 = not known                 */
+    int   mute;                /* 1 = muted                              */
+    int   repeat;              /* DOME_NP_REPEAT_OFF, _ALL or _ONE       */
+    int   shuffle;             /* 1 = on                                 */
     float palette[4][3];
 } DomeNowPlaying;
 const DomeNowPlaying *dome_nowplaying(void);

@@ -68,16 +68,24 @@ class Dome:
     def palette(self, hexes):
         return self.send("palette " + (" ".join(hexes) if hexes else "off"))
 
+    def volume(self, level, mute):
+        level = max(0, min(100, int(level)))
+        return self.send(f"volume {level} {'on' if mute else 'off'}")
+
+    def mode(self, repeat, shuffle):
+        repeat = repeat if repeat in ("off", "on_all", "on_one") else "off"
+        return self.send(f"mode {repeat} {'on' if shuffle == 'on' else 'off'}")
+
     def progress(self, pos_ms, dur_ms, state):
         state = state if state in ("play", "pause", "stop") else "stop"
         return self.send(f"progress {max(0, int(pos_ms))} {max(0, int(dur_ms))} {state}")
 
     def publish(self, info):
         """Write now.txt (info: title, artist, album, station, source,
-        behaviour, art) and tell hemisphere. Returns the serial."""
+        behaviour, next, art) and tell hemisphere. Returns the serial."""
         self.serial += 1
         lines = [f"serial={self.serial}"]
-        for k in ("title", "artist", "album", "station", "source", "behaviour"):
+        for k in ("title", "artist", "album", "station", "source", "behaviour", "next"):
             lines.append(f"{k}={ascii_text(info.get(k, ''))}")
         lines.append(f"art={1 if info.get('art') else 0}")
         self.data.mkdir(parents=True, exist_ok=True)

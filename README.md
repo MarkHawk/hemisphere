@@ -711,8 +711,10 @@ hands it to the dome:
 * **the palette**: four colours from the cover. Music's theme 8, album,
   is built from them, so any Music style takes on the album's colours.
   With no cover it falls back to a neutral set.
-* **the details** (title, artist, album or station, source) in
-  `data/nowplaying/now.txt`, and the **progress** about once a second.
+* **the details** (title, artist, album or station, source, and what the
+  HEOS queue plays next) in `data/nowplaying/now.txt`, the **progress**
+  about once a second, and the **volume**, mute, repeat and shuffle as
+  they change.
 * **switching**: when music starts it shows the music scene (Music for now),
   and when it has been paused or stopped for five minutes it puts back the
   scene and style that were there. It never switches within ten minutes of
@@ -722,8 +724,8 @@ hands it to the dome:
   the music has the dome and carries on afterwards. `--no-auto` turns
   switching off.
 
-It is **read only**: it only asks the amp what it is playing and listens
-for changes. It cannot play, pause, skip, change the volume or the input:
+It is **read only**: it only asks the amp what it is playing (and its
+volume, mute, play mode and queue) and listens for changes. It cannot play, pause, skip, change the volume or the input:
 anything else is refused before it is sent (`ALLOWED` in `heos.py`).
 
 What each source does is in `tools/nowplaying/sources.json`: streaming
@@ -759,8 +761,9 @@ journalctl -u hemisphere-nowplaying -f
 **Control commands** it uses, for anyone writing their own feed (UDP on
 `127.0.0.1:5005`, one per packet): `palette RRGGBB RRGGBB RRGGBB RRGGBB`
 (brightest first, or `palette off`), `np <serial>` (new `now.txt` and
-`art.rgba` are ready), `progress <pos_ms> <dur_ms> <play|pause|stop>`, and
-`scene <n> <by>`, where `by` labels who changed the scene (`state` reports
+`art.rgba` are ready), `progress <pos_ms> <dur_ms> <play|pause|stop>`,
+`volume <0..100> <on|off>` (the level, and muted or not), `mode
+<off|on_all|on_one> <on|off>` (repeat and shuffle), and `scene <n> <by>`, where `by` labels who changed the scene (`state` reports
 it as `by`, with `since` in seconds). Scenes read it all with
 `dome_nowplaying()` in `dome/dome.h`.
 

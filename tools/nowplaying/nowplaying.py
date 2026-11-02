@@ -9,6 +9,8 @@ passes on what it is playing:
   the palette  four colours from the cover, for theme 8 (album)
   the details  title, artist, album, station, source: data/nowplaying/now.txt
   progress     position, length and play state, about once a second
+  the rest     volume and mute, repeat and shuffle, and what the HEOS
+               queue plays next (now.txt's next=), as they change
 
 and switches the dome to the music when it starts, and back when it
 stops (see switcher.py; --no-auto turns that off). Which source does
@@ -58,6 +60,15 @@ def is_stream_info(text):
     return bool(STREAM_INFO.match(text or ""))
 
 
+def next_up(queue, qid):
+    """'Song - Artist' of the queue item after qid, or ''."""
+    for i, q in enumerate(queue):
+        if str(q.get("qid")) == str(qid) and i + 1 < len(queue):
+            n = queue[i + 1]
+            return " - ".join(x for x in (n.get("song"), n.get("artist")) if x)
+    return ""
+
+
 class NowPlaying:
     """The work, given a way to connect (so the tests can use the fake)."""
 
@@ -84,6 +95,9 @@ class NowPlaying:
         self.has_art = False
         self.info = {}
         self.sound = False
+        self.level, self.mute = -1, False
+        self.repeat, self.shuffle = "off", "off"
+        self.next = ""
         # a radio station sends its details in pieces, a logo one minute
         # and none the next: keep what it gave while it is the same station
         self.radio = {"id": None, "station": "", "palette": None, "art": False}
@@ -130,10 +144,11 @@ class NowPlaying:
             station = station[len(self.player_name) + 3:]
         if self.behaviour == "radio":
             station = self.remember_station(m, station)
+        self.next = self.read_next()
         self.info = {"title": self.title_of(m), "artist": m.get("artist", ""),
                      "album": m.get("album", ""), "station": station,
                      "source": self.source, "behaviour": self.behaviour,
-                     "art": self.has_art}
+                     "next": self.next, "art": self.has_art}
         self.send_all()
         what = " / ".join(x for x in (self.info["title"], self.info["artist"]) if x)
         self.log(f"Now playing: {what or 'nothing'} ({self.source}, {self.behaviour}"
@@ -153,11 +168,31 @@ class NowPlaying:
             self.palette, self.has_art = r["palette"], True
         return station or r["station"]
 
+    def read_next(self):
+        """What the HEOS queue plays next (empty for Spotify Connect,
+        radio and inputs, which have no HEOS queue)."""
+        if self.client is None or self.pid is None:
+            return ""
+        try:
+            return next_up(self.client.queue(self.pid), self.media.get("qid"))
+        except heos.HeosError:
+            return ""
+
+    def read_levels(self):
+        try:
+            self.level, self.mute = self.client.volume(self.pid)
+            self.repeat, self.shuffle = self.client.play_mode(self.pid)
+        except heos.HeosError as e:
+            self.log(f"Could not read volume or play mode: {e}")
+
     def send_all(self):
         """Everything the dome should know, again (also after it restarts)."""
         self.dome.palette(self.palette)
         self.published = self.dome.publish(self.info)
         self.dome.progress(self.pos, self.dur, self.state)
+        if self.level >= 0:
+            self.dome.volume(self.level, self.mute)
+        self.dome.mode(self.repeat, self.shuffle)
 
     def playing(self):
         if self.state == "play":
@@ -177,6 +212,22 @@ class NowPlaying:
         elif name == "player_state_changed":
             self.state = e.get("state", "stop")
             self.dome.progress(self.pos, self.dur, self.state)
+        elif name == "player_volume_changed":
+            try:
+                self.level = int(e.get("level", self.level))
+            except ValueError:
+                return
+            self.mute = e.get("mute") == "on"
+            self.dome.volume(self.level, self.mute)
+        elif name in ("repeat_mode_changed", "shuffle_mode_changed"):
+            self.repeat = e.get("repeat", self.repeat)
+            self.shuffle = e.get("shuffle", self.shuffle)
+            self.dome.mode(self.repeat, self.shuffle)
+        elif name == "player_queue_changed":
+            nxt = self.read_next()
+            if nxt != self.next:
+                self.next = self.info["next"] = nxt
+                self.published = self.dome.publish(self.info)
         elif name == "player_now_playing_progress":
             try:
                 self.pos, self.dur = int(e.get("cur_pos", 0)), int(e.get("duration", 0))
@@ -216,6 +267,7 @@ class NowPlaying:
             self.pid = None
             self.choose_player()
             self.state = self.client.play_state(self.pid)
+            self.read_levels()
             self.take_media(self.client.now_playing(self.pid))
             self.dome.progress(self.pos, self.dur, self.state)
             while not stop.is_set():

@@ -236,3 +236,29 @@ def test_radio_details_arriving_in_pieces(rig):
 ])
 def test_stream_info_titles(text, junk):
     assert nowplaying.is_stream_info(text) is junk
+
+
+def test_volume_mode_and_up_next(rig):
+    amp, covers, hemi, np, stop, data, logs = rig
+    amp.level, amp.mute, amp.repeat, amp.shuffle = 25, "off", "on_all", "on"
+    amp.queue = [dict(song(covers, 1), qid=1), dict(song(covers, 2), qid=2)]
+    amp.play(dict(song(covers, 1), qid=1))
+    threading.Thread(target=np.run, args=(stop,), daemon=True).start()
+    assert hemi.wait_for(lambda: "volume 25 off" in hemi.got and "mode on_all on" in hemi.got)
+    assert "next=Track 2 - The Testers" in (data / "now.txt").read_text()
+    amp.set_volume(31, "on")                                  # turned up on the amp, muted
+    assert hemi.wait_for(lambda: "volume 31 on" in hemi.got)
+    amp.set_mode(repeat="off")
+    assert hemi.wait_for(lambda: "mode off on" in hemi.got)
+    amp.set_queue([dict(song(covers, 1), qid=1), dict(song(covers, 5), qid=2)])
+    assert hemi.wait_for(lambda: "next=Track 5" in (data / "now.txt").read_text())
+    assert amp.refused == []
+
+
+def test_next_up():
+    q = [{"qid": 1, "song": "A", "artist": "X"}, {"qid": 2, "song": "B", "artist": ""},
+         {"qid": 3, "song": "C", "artist": "Z"}]
+    assert nowplaying.next_up(q, 1) == "B"
+    assert nowplaying.next_up(q, "2") == "C - Z"
+    assert nowplaying.next_up(q, 3) == ""
+    assert nowplaying.next_up([], 1) == ""

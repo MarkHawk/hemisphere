@@ -1192,6 +1192,8 @@ static void print_help(void)
 /*                         brightest first ("palette off" to forget)   */
 /*     np <serial>         new data/nowplaying/now.txt and art.rgba    */
 /*     progress <pos_ms> <dur_ms> <play|pause|stop>                    */
+/*     volume <0..100> <on|off>     the level, and whether muted       */
+/*     mode <off|on_all|on_one> <on|off>   repeat and shuffle          */
 /* ================================================================== */
 static ctl_sock g_ctl = CTL_NONE;
 static int   g_ctl_mode = -99;           /* scene requested by the remote */
@@ -1226,6 +1228,7 @@ static void np_init(void)
     memcpy(g_np.palette, NP_DEFAULT, sizeof NP_DEFAULT);
     memcpy(g_np_target, NP_DEFAULT, sizeof NP_DEFAULT);
     g_np.age = -1.0f;
+    g_np.volume = -1;
 }
 
 static void np_tick(float dt)
@@ -1355,7 +1358,9 @@ static void ctl_state(Buf *o, int mode, int paused)
         bput(o, "%s\"%02x%02x%02x\"", i ? "," : "",
              (int)lroundf(g_np_target[i][0] * 255.0f), (int)lroundf(g_np_target[i][1] * 255.0f),
              (int)lroundf(g_np_target[i][2] * 255.0f));
-    bput(o, "]}");
+    static const char *NP_REPEAT[3] = { "off", "on_all", "on_one" };
+    bput(o, "],\"volume\":%d,\"mute\":%d,\"repeat\":\"%s\",\"shuffle\":%d}",
+         np->volume, np->mute, NP_REPEAT[np->repeat], np->shuffle);
     bput(o, ",\"scenes\":[");
     for (int i = 0; i < g_nscenes; i++) { if (i) bput(o, ","); bstr(o, g_scenes[i]->name); }
     bput(o, "],\"params\":[");
@@ -1449,6 +1454,37 @@ static int np_command(const char *in, Buf *o)
         if (end == in + 3) { bput(o, "error: np needs a serial number"); return 1; }
         g_np.serial = (int)s;
         g_np_heard_ms = SDL_GetTicks();
+        bput(o, "ok");
+        return 1;
+    }
+    if (!strncmp(in, "volume ", 7)) {
+        int level;
+        char m[8] = "";
+        if (sscanf(in + 7, "%d %7s", &level, m) != 2 || level < 0 || level > 100
+            || (strcmp(m, "on") && strcmp(m, "off"))) {
+            bput(o, "error: volume <0..100> <on|off>");
+            return 1;
+        }
+        g_np.volume = level;
+        g_np.mute = !strcmp(m, "on");
+        g_np_heard_ms = SDL_GetTicks();
+        bput(o, "ok");
+        return 1;
+    }
+    if (!strncmp(in, "mode ", 5)) {
+        char r[12] = "", sh[8] = "";
+        if (sscanf(in + 5, "%11s %7s", r, sh) != 2) {
+            bput(o, "error: mode <off|on_all|on_one> <on|off>");
+            return 1;
+        }
+        int rep = !strcmp(r, "off") ? DOME_NP_REPEAT_OFF : !strcmp(r, "on_all") ? DOME_NP_REPEAT_ALL
+                : !strcmp(r, "on_one") ? DOME_NP_REPEAT_ONE : -1;
+        if (rep < 0 || (strcmp(sh, "on") && strcmp(sh, "off"))) {
+            bput(o, "error: mode <off|on_all|on_one> <on|off>");
+            return 1;
+        }
+        g_np.repeat = rep;
+        g_np.shuffle = !strcmp(sh, "on");
         bput(o, "ok");
         return 1;
     }
