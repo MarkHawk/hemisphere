@@ -110,8 +110,12 @@ class NowPlaying:
                 art.prune(self.cache)
             except art.ArtError as e:
                 self.log(f"No cover: {e}")
-        # HEOS fills station with the song title for streamed songs
-        station = (m.get("station") or "") if m.get("type") == "station" else ""
+        # Spotify comes as type "station" with the song title as the
+        # station: show a station only if it says something new, or for
+        # inputs (where the name is all there is)
+        station = m.get("station") or ""
+        if station == m.get("song") and not str(m.get("mid", "")).startswith("inputs/"):
+            station = ""
         if self.player_name and station.startswith(self.player_name + " - "):
             station = station[len(self.player_name) + 3:]
         self.info = {"title": self.title_of(m), "artist": m.get("artist", ""),

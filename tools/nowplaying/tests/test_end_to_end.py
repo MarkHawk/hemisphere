@@ -83,7 +83,7 @@ def rig(tmp_path):
 
 
 def song(covers, n):
-    return {"type": "song", "song": f"Track {n}", "station": f"Track {n}",   # as HEOS does
+    return {"type": "station", "song": f"Track {n}", "station": f"Track {n}",  # as Spotify does
             "artist": "The Testers", "album": "Fixtures",
             "image_url": covers.url(f"/cover/{n}.png"), "mid": f"m{n}", "sid": 4}
 
