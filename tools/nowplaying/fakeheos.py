@@ -2,9 +2,9 @@
 """A fake HEOS device, for tests and demos without the amp.
 
 Speaks enough of the HEOS CLI (TCP, one JSON line per message) for
-nowplaying.py: player/get_players, player/get_now_playing_media,
-player/get_play_state, system/heart_beat and
-system/register_for_change_events, plus the change events. Any other
+nowplaying.py: every read-only command in heos.ALLOWED (players, now
+playing, play state, volume, mute, play mode, queue, heart beat and
+register_for_change_events), plus the change events. Any other
 command is answered with a failure and logged, so a test can prove the
 tool never sent one. It also serves made-up cover pictures over HTTP
 (drawn with Pillow at run time: no real album art anywhere).
@@ -51,6 +51,9 @@ class FakeHeos:
         self.players = [dict(PLAYER)]
         self.media = {}
         self.state = "stop"
+        self.level, self.mute = 20, "off"
+        self.repeat, self.shuffle = "off", "off"
+        self.queue = []
         self.commands = []                  # every command received, as sent
         self.refused = []                   # commands it does not know
         self.lock = threading.Lock()
@@ -151,6 +154,25 @@ class FakeHeos:
             if path in ("player/get_play_state", "player/get_now_playing_media") and not pid_ok:
                 return {"heos": {"command": path, "result": "fail",
                                  "message": "eid=2&text=ID Not Valid"}}
+            if path in ("player/get_volume", "player/get_mute", "player/get_play_mode",
+                        "player/get_queue") and not pid_ok:
+                return {"heos": {"command": path, "result": "fail",
+                                 "message": "eid=2&text=ID Not Valid"}}
+            if path == "player/get_volume":
+                return {"heos": {"command": path, "result": "success",
+                                 "message": _msg(pid=params["pid"], level=self.level)}}
+            if path == "player/get_mute":
+                return {"heos": {"command": path, "result": "success",
+                                 "message": _msg(pid=params["pid"], state=self.mute)}}
+            if path == "player/get_play_mode":
+                return {"heos": {"command": path, "result": "success",
+                                 "message": _msg(pid=params["pid"], repeat=self.repeat,
+                                                 shuffle=self.shuffle)}}
+            if path == "player/get_queue":
+                a, b = (int(x) for x in params.get("range", "0,99").split(","))
+                return {"heos": {"command": path, "result": "success",
+                                 "message": _msg(pid=params["pid"], range=f"{a},{b}")},
+                        "payload": [dict(q) for q in self.queue[a:b + 1]]}
             if path == "player/get_play_state":
                 return {"heos": {"command": path, "result": "success",
                                  "message": _msg(pid=params["pid"], state=self.state)}}
@@ -182,6 +204,24 @@ class FakeHeos:
         with self.lock:
             self.state = state
         self._event("player_state_changed", pid=PID, state=state)
+
+    def set_volume(self, level, mute="off"):
+        with self.lock:
+            self.level, self.mute = level, mute
+        self._event("player_volume_changed", pid=PID, level=level, mute=mute)
+
+    def set_mode(self, repeat=None, shuffle=None):
+        if repeat is not None:
+            self.repeat = repeat
+            self._event("repeat_mode_changed", pid=PID, repeat=repeat)
+        if shuffle is not None:
+            self.shuffle = shuffle
+            self._event("shuffle_mode_changed", pid=PID, shuffle=shuffle)
+
+    def set_queue(self, items):
+        with self.lock:
+            self.queue = [dict(q) for q in items]
+        self._event("player_queue_changed", pid=PID)
 
     def progress(self, cur_ms, dur_ms):
         self._event("player_now_playing_progress", pid=PID, cur_pos=int(cur_ms),

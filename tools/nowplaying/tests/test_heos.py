@@ -203,3 +203,48 @@ def test_recorded_amp_every_source(fixtures):
     prog = [heos.parse_message(g["heos"]["message"]) for g in got
             if g["heos"]["command"] == "event/player_now_playing_progress"]
     assert any(p["duration"] == "0" for p in prog)
+
+
+# ---- the read-only additions: volume, mute, play mode, queue -------
+def test_new_read_commands_build():
+    assert heos.build("player/get_volume", pid=PID) == f"heos://player/get_volume?pid={PID}\r\n"
+    assert heos.build("player/get_mute", pid=PID).startswith("heos://player/get_mute?")
+    assert heos.build("player/get_play_mode", pid=PID).startswith("heos://player/get_play_mode?")
+    assert heos.build("player/get_queue", pid=PID, range="0,9") == \
+        f"heos://player/get_queue?pid={PID}&range=0,9\r\n"     # the amp needs a real comma
+    assert heos.build("player/get_queue", pid=PID).startswith("heos://player/get_queue?")
+
+
+@pytest.mark.parametrize("command,params", [
+    ("player/set_play_mode", {"pid": PID, "repeat": "on_all", "shuffle": "on"}),
+    ("player/clear_queue", {"pid": PID}),
+    ("player/remove_from_queue", {"pid": PID, "qid": 1}),
+    ("player/play_queue", {"pid": PID, "qid": 1}),
+    ("player/move_queue_item", {"pid": PID, "sqid": 1, "dqid": 2}),
+    ("player/save_queue", {"pid": PID, "name": "x"}),
+    ("player/toggle_mute", {"pid": PID}),
+    ("player/get_queue", {"pid": PID, "range": "0,9&x=1"}),
+    ("player/get_queue", {"pid": PID, "range": "all"}),
+    ("player/get_volume", {"pid": PID, "level": 5}),
+])
+def test_still_refuses_the_changing_ones(command, params):
+    with pytest.raises(heos.NotAllowed):
+        heos.build(command, **params)
+
+
+def test_volume_mode_queue_with_fake(fake):
+    fake.queue = [{"song": "A", "artist": "X", "qid": 1}, {"song": "B", "artist": "Y", "qid": 2}]
+    fake.level, fake.mute, fake.repeat, fake.shuffle = 33, "on", "on_all", "on"
+    c = heos.Client("127.0.0.1", fake.port)
+    try:
+        assert c.volume(PID) == (33, True)
+        assert c.play_mode(PID) == ("on_all", "on")
+        assert [q["song"] for q in c.queue(PID)] == ["A", "B"]
+        fake.set_volume(40, "off")
+        e = c.next_event(2.0)
+        assert e == {"event": "player_volume_changed", "pid": str(PID), "level": "40", "mute": "off"}
+        fake.set_mode(shuffle="off")
+        assert c.next_event(2.0)["event"] == "shuffle_mode_changed"
+    finally:
+        c.close()
+    assert fake.refused == []

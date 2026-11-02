@@ -12,20 +12,30 @@ the input. register_for_change_events only changes what this connection
 is told, not the amp.
 """
 import json
+import re
 import socket
 import time
 import urllib.parse
 
 PORT = 1255
 
-# the only commands this client will send, and the values they may take
+RANGE = re.compile(r"^\d{1,3},\d{1,3}$")    # get_queue: first,last
+
+# the only commands this client will send, and the values they may take:
+# None = any, a set = one of these, a pattern = must match it. Every one
+# only reads. Add to this list only after checking with the owner.
 ALLOWED = {
     "system/register_for_change_events": {"enable": {"on", "off"}},
     "system/heart_beat": {},
     "player/get_players": {},
     "player/get_now_playing_media": {"pid": None},
     "player/get_play_state": {"pid": None},
+    "player/get_volume": {"pid": None},
+    "player/get_mute": {"pid": None},
+    "player/get_play_mode": {"pid": None},
+    "player/get_queue": {"pid": None, "range": RANGE},
 }
+OPTIONAL = {"player/get_queue": {"range"}}  # parameters that may be left out
 
 
 class HeosError(Exception):
@@ -48,12 +58,18 @@ def build(command, **params):
     for k, v in params.items():
         if k not in rules:
             raise NotAllowed(f"{command} does not take {k}")
-        if rules[k] is not None and str(v) not in rules[k]:
+        rule = rules[k]
+        if isinstance(rule, re.Pattern):
+            ok = bool(rule.match(str(v)))
+        else:
+            ok = rule is None or str(v) in rule
+        if not ok:
             raise NotAllowed(f"{command} {k}={v} is not allowed")
     for k in rules:
-        if k not in params:
+        if k not in params and k not in OPTIONAL.get(command, ()):
             raise HeosError(f"{command} needs {k}")
-    query = urllib.parse.urlencode({k: str(v) for k, v in params.items()})
+    # commas stay as they are: the amp does not decode %2C (get_queue's range)
+    query = urllib.parse.urlencode({k: str(v) for k, v in params.items()}, safe=",")
     return f"heos://{command}" + (f"?{query}" if query else "") + "\r\n"
 
 
@@ -202,6 +218,24 @@ class Client:
 
     def play_state(self, pid):
         return self.query.request("player/get_play_state", pid=pid)["message"].get("state", "stop")
+
+    def volume(self, pid):
+        """(level 0..100, muted)"""
+        m = self.query.request("player/get_volume", pid=pid)["message"]
+        mute = self.query.request("player/get_mute", pid=pid)["message"].get("state") == "on"
+        try:
+            return int(m.get("level", 0)), mute
+        except ValueError:
+            return 0, mute
+
+    def play_mode(self, pid):
+        """(repeat: off, on_all or on_one; shuffle: on or off)"""
+        m = self.query.request("player/get_play_mode", pid=pid)["message"]
+        return m.get("repeat", "off"), m.get("shuffle", "off")
+
+    def queue(self, pid, first=0, last=49):
+        return self.query.request("player/get_queue", pid=pid,
+                                  range=f"{first},{last}")["payload"] or []
 
     def heartbeat(self, every=30.0):
         """Keep the question connection alive."""
