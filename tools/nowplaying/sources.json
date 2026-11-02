@@ -3,6 +3,7 @@
     "How tools/nowplaying treats each HEOS source. Rules are tried in turn and the first that matches wins: sid is the HEOS source number, mid_prefix the start of the media id (inputs are 'inputs/<name>'), type 'song' or 'station'.",
     "Behaviours: album (show the cover), radio (station art if there is any), record (the record planet, no cover needed), disc (a CD: no cover or progress expected, keeps the current colours), default (show whatever there is), release (give the dome back after release_seconds), off (leave the dome alone).",
     "audio_means_playing: for inputs where the amp cannot tell if music is playing (a turntable), sound from the WLED audio sync counts as playing.",
+    "while_showing: settings a scene takes while the music has the dome (Music uses theme 8, album: the cover's colours); the old values come back when it hands back.",
     "Your own changes: copy this file, edit it, and pass it with --config."
   ],
   "auto": true,
@@ -11,6 +12,7 @@
   "release_seconds": 10,
   "settle_seconds": 3,
   "scenes": ["NOW PLAYING", "MUSIC"],
+  "while_showing": {"MUSIC": {"theme": 8}},
   "rules": [
     {"mid_prefix": "inputs/phono", "name": "phono", "behaviour": "record", "audio_means_playing": true},
     {"mid_prefix": "inputs/coax", "name": "CD (coaxial)", "behaviour": "disc", "audio_means_playing": true},

@@ -14,11 +14,17 @@ class FakeDome:
         self.picks = {0: ("style", 2.0), 1: None, 2: ("style", 5.0), 3: ("style", 0.0)}
         self.sent = []
         self.up = True
+        self.music = {"style": 4.0, "theme": 2.0}
 
     def state(self):
         if not self.up:
             return None
-        return {"scene": self.scene_n, "by": self.by, "since": self.since, "scenes": SCENES}
+        params = [{"name": "rev_secs", "group": "view", "value": 60}]
+        if self.scene_n == 3:
+            params += [{"name": "style", "group": "scene", "value": self.music["style"]},
+                       {"name": "theme", "group": "scene", "value": self.music["theme"]}]
+        return {"scene": self.scene_n, "by": self.by, "since": self.since, "scenes": SCENES,
+                "params": params}
 
     def catalog(self):
         out = []
@@ -34,6 +40,8 @@ class FakeDome:
 
     def sset(self, scene, name, value):
         self.sent.append(f"sset {scene} {name} {value:g}")
+        if scene == 3:
+            self.music[name] = value
         return "ok"
 
     def by_hand(self, n, by="key"):
@@ -43,6 +51,10 @@ class FakeDome:
 @pytest.fixture
 def cfg():
     return load_config()
+
+
+def scenes(dome):
+    return [c for c in dome.sent if c.startswith("scene ")]
 
 
 def run(sw, dome, t0, t1, playing, behaviour, step=1.0):
@@ -95,11 +107,12 @@ def test_takes_over_after_settling_and_gives_back(cfg):
     sw.update(3, True, "album")
     assert dome.sent == [f"scene {MUSIC} nowplaying"]
     run(sw, dome, 4, 100, True, "album")                     # track changes etc.
-    assert len(dome.sent) == 1
+    assert dome.sent[1:] == [f"sset {MUSIC} theme 8"]       # album colours
     run(sw, dome, 101, 101 + 299, False, "album")            # paused 5 min less a bit
-    assert len(dome.sent) == 1
+    assert len(dome.sent) == 2
     run(sw, dome, 401, 402, False, "album")
-    assert dome.sent[1:] == ["sset 2 style 5", "scene 2 auto"]
+    assert dome.sent[2:] == [f"sset {MUSIC} theme 2", "sset 2 style 5", "scene 2 auto"]
+    assert dome.music == {"style": 4.0, "theme": 2.0}       # Music as it was
 
 
 def test_resuming_cancels_the_idle_timer(cfg):
@@ -109,7 +122,7 @@ def test_resuming_cancels_the_idle_timer(cfg):
     run(sw, dome, 6, 200, False, "album")
     run(sw, dome, 201, 210, True, "album")
     run(sw, dome, 211, 400, False, "album")
-    assert dome.sent == [f"scene {MUSIC} nowplaying"]
+    assert scenes(dome) == [f"scene {MUSIC} nowplaying"]
 
 
 def test_release_source_gives_back_quickly(cfg):
@@ -118,7 +131,7 @@ def test_release_source_gives_back_quickly(cfg):
     run(sw, dome, 0, 5, True, "album")
     run(sw, dome, 6, 16, True, "release")              # 10 s after it switched
     assert dome.sent[-1] == "scene 1 auto"
-    assert "sset" not in " ".join(dome.sent)                # Planet has no style
+    assert not any(c.startswith("sset 1 ") for c in dome.sent)  # Planet has no style
 
 
 def test_off_source_never_takes_over(cfg):
@@ -126,27 +139,27 @@ def test_off_source_never_takes_over(cfg):
     sw = Switcher(dome, cfg, log=lambda s: None)
     run(sw, dome, 0, 60, True, "off")
     run(sw, dome, 61, 60 * 60, True, "release")
-    assert dome.sent == []
+    assert scenes(dome) == []
 
 
 def test_respects_a_recent_hand_change(cfg):
     dome = FakeDome(scene=1, by="key", since=60.0)          # a minute ago
     sw = Switcher(dome, cfg, log=lambda s: None)
     run(sw, dome, 0, 500, True, "album")                     # 9 min 20 s in all
-    assert dome.sent == []
+    assert scenes(dome) == []
     run(sw, dome, 501, 560, True, "album")                   # past 10 min
-    assert dome.sent == [f"scene {MUSIC} nowplaying"]
+    assert scenes(dome) == [f"scene {MUSIC} nowplaying"]
 
 
 def test_remote_counts_as_by_hand_but_playlist_does_not(cfg):
     dome = FakeDome(scene=1, by="remote", since=10.0)
     sw = Switcher(dome, cfg, log=lambda s: None)
     run(sw, dome, 0, 30, True, "album")
-    assert dome.sent == []
+    assert scenes(dome) == []
     dome2 = FakeDome(scene=1, by="playlist", since=10.0)
     sw2 = Switcher(dome2, cfg, log=lambda s: None)
     run(sw2, dome2, 0, 30, True, "album")
-    assert dome2.sent == [f"scene {MUSIC} nowplaying"]
+    assert scenes(dome2) == [f"scene {MUSIC} nowplaying"]
 
 
 def test_stands_down_when_you_change_scene(cfg):
@@ -155,12 +168,12 @@ def test_stands_down_when_you_change_scene(cfg):
     run(sw, dome, 0, 5, True, "album")
     dome.by_hand(1)
     run(sw, dome, 6, 60 * 30, True, "album")                # 30 min more music
-    assert dome.sent == [f"scene {MUSIC} nowplaying"]       # never took it back
+    assert scenes(dome) == [f"scene {MUSIC} nowplaying"]       # never took it back
     run(sw, dome, 60 * 30 + 1, 60 * 36, False, "album")     # quiet 5+ min: new session
     assert dome.scene_n == 1                                 # your scene stays
     dome.since = 99999
     run(sw, dome, 60 * 36 + 1, 60 * 36 + 10, True, "album")
-    assert dome.sent[-1] == f"scene {MUSIC} nowplaying"
+    assert scenes(dome)[-1] == f"scene {MUSIC} nowplaying"
 
 
 def test_does_not_give_back_if_you_moved_away_while_paused(cfg):
@@ -170,7 +183,7 @@ def test_does_not_give_back_if_you_moved_away_while_paused(cfg):
     sw.update(6, False, "album")
     dome.by_hand(2)
     run(sw, dome, 7, 400, False, "album")
-    assert dome.sent == [f"scene {MUSIC} nowplaying"]
+    assert scenes(dome) == [f"scene {MUSIC} nowplaying"]
     assert dome.scene_n == 2
 
 
@@ -178,7 +191,7 @@ def test_leaves_calibration_grids_alone(cfg):
     dome = FakeDome(scene=-2)
     sw = Switcher(dome, cfg, log=lambda s: None)
     run(sw, dome, 0, 60, True, "album")
-    assert dome.sent == []
+    assert scenes(dome) == []
 
 
 def test_already_on_music_by_hand(cfg):
@@ -186,7 +199,7 @@ def test_already_on_music_by_hand(cfg):
     sw = Switcher(dome, cfg, log=lambda s: None)
     run(sw, dome, 0, 30, True, "album")
     run(sw, dome, 31, 1000, False, "album")
-    assert dome.sent == []
+    assert scenes(dome) == []
 
 
 def test_hemisphere_not_running_then_starting(cfg):
@@ -194,10 +207,10 @@ def test_hemisphere_not_running_then_starting(cfg):
     dome.up = False
     sw = Switcher(dome, cfg, log=lambda s: None)
     run(sw, dome, 0, 20, True, "album")
-    assert dome.sent == []
+    assert scenes(dome) == []
     dome.up = True
     run(sw, dome, 21, 30, True, "album")
-    assert dome.sent == [f"scene {MUSIC} nowplaying"]
+    assert scenes(dome) == [f"scene {MUSIC} nowplaying"]
 
 
 def test_turned_off(cfg):
@@ -205,7 +218,7 @@ def test_turned_off(cfg):
     dome = FakeDome()
     sw = Switcher(dome, cfg, log=lambda s: None)
     run(sw, dome, 0, 60, True, "album")
-    assert dome.sent == []
+    assert scenes(dome) == []
 
 
 def test_prefers_now_playing_scene_when_present(cfg):
@@ -215,7 +228,7 @@ def test_prefers_now_playing_scene_when_present(cfg):
     try:
         sw = Switcher(dome, cfg, log=lambda s: None)
         run(sw, dome, 0, 5, True, "album")
-        assert dome.sent == ["scene 4 nowplaying"]
+        assert scenes(dome) == ["scene 4 nowplaying"]
     finally:
         SCENES[:] = old
 
