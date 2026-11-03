@@ -2,7 +2,33 @@
 
 Part of [Hemisphere](../README.md). Every scene's settings, and the files they live in.
 
-Jump to: [view](#view-settings), [Death Star](#death-star), [Planet](#planet), [colour themes](#colour-themes), [Plasma](#plasma), [Julia](#julia), [Kaleidoscope](#kaleidoscope), [Game of Life](#game-of-life), [Moon](#moon), [Orbit watch](#orbit-watch), [Groovy](#groovy), [Computers](#computers), [Hypnotic](#hypnotic), [Sports balls](#sports-balls), [8-bit retro](#8-bit-retro), [Retro screen](#retro-screen), [Eyes](#eyes), [Music](#music), [Now playing](#now-playing), [Weather](#weather), [Sci-fi](#sci-fi).
+Jump to: [the scenes in full](#the-scenes-in-full), [files and keys](#settings-files-and-keys), [view](#view-settings), [Death Star](#death-star), [Planet](#planet), [colour themes](#colour-themes), [Plasma](#plasma), [Julia](#julia), [Kaleidoscope](#kaleidoscope), [Game of Life](#game-of-life), [Moon](#moon), [Orbit watch](#orbit-watch), [Groovy](#groovy), [Computers](#computers), [Hypnotic](#hypnotic), [Sports balls](#sports-balls), [8-bit retro](#8-bit-retro), [Retro screen](#retro-screen), [Eyes](#eyes), [Music](#music), [Now playing](#now-playing), [Weather](#weather), [Sci-fi](#sci-fi).
+
+## The scenes in full
+
+| Key | Scene | What it shows |
+|-----|-------|---------------|
+| 1 or D | Death Star | Lit, panelled hull with the green grid, superlaser dish and trench drawn over it |
+| 2 | Planet | Any planet map wrapped round the globe, with day/night shading and an atmosphere glow. With no maps installed it shows a procedural gas giant |
+| 3 | Plasma | A flowing full-colour field in eight colour themes, and the template for new scenes |
+| 4 | Julia | A Julia set fractal wrapped round the globe on the Riemann sphere, morphing as its constant walks the edge of the Mandelbrot set. Also the Mandelbrot set itself, in eight colour themes |
+| 5 | Kaleidoscope | A mirrored folding fractal: 48 identical tiles, or classic wedges round the pole, slowly turning inside the mirrors, in eight colour themes |
+| 6 | Game of Life | Life on a globe with no edges, under three sets of rules and in eight colour themes. Fresh soup drops in whenever it settles down |
+| 7 | Moon tonight | The Moon filling the dome, lit to tonight's real phase, with its age and the next full and new moon written across the equator. No internet needed |
+| 8 | Orbit watch | The live Earth with real day and night, the ISS and its next orbit, a few hundred satellites, and the last day's earthquakes |
+| 9 | Groovy | 60s and 70s patterns: op art, psychedelic swirl, flower power, lava lamp, liquid light, tie-dye, paisley, spirograph |
+| 0 | Sci-fi | Hologram globe, radar sweep (with real satellites if the orbit feed is running), hyperspace, planet scan, reactor core, ship's computer |
+| , and . | Computers | Classic computing: a front panel of switches and lamps with a program being toggled in, oscilloscope figures, a scrolling assembler listing, a circuit board, core memory, a packet network round the globe, and a globe of blinking lamp panels |
+| , and . | Hypnotic | Tesseract, quasicrystal, moire, Fibonacci globe, Truchet maze, hypno spiral, tunnel, pendulum, breathing hexagons, geodesic sphere |
+| , and . | Sports balls | The globe as a ball, rolling: football, basketball, tennis, cricket, baseball, volleyball, golf, pool 8-ball, beach ball, bowling ball, and two plastic puzzles that solve themselves: a puzzle cube (2x2 to 5x5) and a megaminx |
+| , and . | 8-bit retro | Chunky-pixel effects: digital rain, copper bars with a sine scroller, a rotozoomer, a maze chase, Rim defender, Asteroids on a globe, 16-colour plasma, tape loading (a random picture each time, or your own photos), pixel fire. The three games are full games that play themselves across the whole dome |
+| , and . | Retro screen | 80s film and TV screens: a defence command globe with missile tracks, noughts and crosses played to a draw on 23 boards, a cyborg's visor, a ship's computer terminal, light-cycles on a neon grid, and a TV closedown |
+| , and . | Weather | Today's clouds over the turning Earth (still or drifting), an infrared-style picture, a sharp view zoomed in over home, tonight's aurora forecast round the pole, and famous hurricanes and typhoons replayed from the record |
+| , and . | Eyes | One big eye filling the dome, looking round the room, blinking, its pupil opening and closing: brown, blue, green and hazel human eyes, a cat, an owl, a reptile, and an original fire eye of glowing embers in an obsidian eyeball |
+| , and . | Music | Built for sound from your WLED lights (see [Sound from WLED](sound.md#sound-from-wled)): 21 styles: spectra, rings, ripples, a starfield, aurora, oscilloscope and Lissajous figures, a wire tunnel and a spectrum landscape, particle bursts, a galaxy, rain, fireworks, an 8-bit analyser, plasma, a kaleidoscope, liquid light and a ring of fire. With no music each style idles calmly |
+| , and . | Now playing | What your HEOS amp is playing (see [Now playing](sound.md#now-playing-from-a-heos-amp)): the cover filling the dome, a turning record or CD, the track as a day with a moon, today's covers as an atlas of countries, the cover in dots dancing to the music, or a status display with the time, volume and up next. Moves lightly with your WLED lights |
+
+## Settings files and keys
 
 Settings are kept in files next to the program, in groups:
 
