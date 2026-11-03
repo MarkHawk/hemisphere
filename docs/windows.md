@@ -48,19 +48,21 @@ venv\Scripts\pip install -r tools\requirements.txt
 ## The WorldEye as a second screen
 
 Plug the WorldEye into a spare HDMI output and set Windows to **Extend
-these displays** (Settings, System, Display). Hemisphere opens full screen
-on display 0, the main one. Press **V** until it moves onto the WorldEye,
-then **S** to save; the choice is the `display` view setting, also on the
-web remote. Clicking on your other screen doesn't minimise the dome.
+these displays** (Settings, System, Display). Hemisphere is designed to
+open full screen on display 0, the main one. Pressing **V** should move it
+to the next screen until it reaches the WorldEye. Then **S** saves the
+choice, which is the `display` view setting, also on the web remote.
+Clicking on your other screen should not minimise the dome.
 
 Check the calibration on the lens grid (**G**) the first time. The
-calibration is in fractions of the screen, so it carries over from the Pi
-if the WorldEye gets the same resolution, but a different HDMI mode moves
-things slightly.
+calibration is in fractions of the screen, so it should carry over from
+the Pi if the WorldEye gets the same resolution. A different HDMI mode is
+likely to move things slightly.
 
-With the dome on a second screen, keys only reach Hemisphere when its
-window has focus, so the [web remote](controls.md#web-remote) is the easy way to
-drive it. The terminal key reader the Pi uses over SSH isn't on Windows.
+With the dome on a second screen, keys should only reach Hemisphere when
+its window has focus, so the [web remote](controls.md#web-remote) is
+expected to be the easy way to drive it. The terminal key reader the Pi
+uses over SSH isn't built for Windows.
 
 ## Running on its own
 
@@ -90,12 +92,13 @@ For a PC that comes back by itself after a power cut:
 ## Remote Desktop
 
 Don't start Hemisphere from a Remote Desktop session. A program started
-under RDP draws to the remote screen, not the PC's HDMI outputs, so the
-dome stays dark. Closing RDP the normal way also locks the session, which
-blanks the dome until someone signs in at the PC.
+under RDP is expected to draw to the remote screen, not the PC's HDMI
+outputs, so the dome would stay dark. Closing RDP the normal way should
+also lock the session, which would blank the dome until someone signs in
+at the PC.
 
 If you do RDP in for admin, leave by running `tools\windows\rdp-to-console.bat`
-as administrator instead of closing the window. It hands your session back
-to the PC's own screens, still signed in, and the dome carries on. Remote
-tools that share the real screen, such as VNC or Chrome Remote Desktop,
-don't have this problem.
+as administrator instead of closing the window. It is designed to hand
+your session back to the PC's own screens, still signed in, so the dome
+carries on. Remote tools that share the real screen, such as VNC or Chrome
+Remote Desktop, should not have this problem.
