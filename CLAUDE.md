@@ -31,6 +31,8 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
   `remote/` (a Flask web remote on port 5000, talking to the UDP control channel
   on 127.0.0.1:5005), `windows/` (start-up and autostart scripts), `audio/`
   (`replay.py` sends the `billie.txt` capture as WLED audio sync packets, for testing)
+- `docs/`: the guides the README links to (settings, calibration, running,
+  controls, live data, sound, Windows, writing scenes, debugging notes)
 - `docs/screenshots/`: gallery photos used in the README
 - `deploy.sh`: copies the project to the Pi
 
@@ -48,10 +50,12 @@ local copy `D:\portfolio\hemisphere`. It is **not** part of hobby-builds.
   lens mapping maths to fix how one scene looks.
 - `*.cfg` files are committed on purpose.
 - No hardcoded IPs, usernames or home paths in committed files.
-- Keep the README's controls, settings and credits in step with the code.
+- Keep the README's scene table and credits, `docs/settings.md` and
+  `docs/controls.md` in step with the code.
 - Commit in small steps. Never push: I push.
 - C for rendering, Python (venv) for tools, Bash for scripts. State the language per
   new file and wait for my OK before writing it.
 - A new scene needs its file listed in `main.c` and the Makefile's `SRC`, a row
-  in the README's settings table, and a gallery photo. Keep each scene quick on
+  in the README's scene table, a section in `docs/settings.md` (and a row in
+  its tables), and a gallery photo. Keep each scene quick on
   a Pi 3: check with `DOME_FPS=1`.

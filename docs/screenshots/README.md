@@ -15,11 +15,15 @@ The main README shows these, one per scene. Save each as a JPEG, roughly
 | orbit.jpg | 8 Orbit watch | With the feed running and the ISS in view |
 | groovy.jpg | 9 Groovy | Tie-dye or liquid light |
 | scifi.jpg | 0 Sci-fi | Hologram or ship's computer |
-| computers.jpg | Computers (, and .) | Front panel or Nixie clock |
+| computers.jpg | Computers (, and .) | Front panel or blinkenlights |
 | hypno.jpg | Hypnotic (, and .) | Geodesic sphere or Fibonacci globe |
 | balls.jpg | Sports balls (, and .) | Football, with the pentagons facing you |
-| retro.jpg | 8-bit retro (, and .) | Pixel planet or copper bars |
+| retro.jpg | 8-bit retro (, and .) | Copper bars or Asteroids |
 | screen.jpg | Retro screen (, and .) | Light grid or defence command |
+| weather.jpg | Weather (, and .) | Live clouds with the day/night line in view (not taken yet) |
+| eyes.jpg | Eyes (, and .) | A human eye looking at the camera (not taken yet) |
+| music.jpg | Music (, and .) | Fire ring or galaxy with music playing (not taken yet) |
+| nowplaying.jpg | Now playing (, and .) | Album globe showing a cover from `tools/nowplaying/fakeheos.py` only, never real album art (not taken yet) |
 | calibration.jpg | G Lens grid | Shows the calibration at work |
 
 Photograph the real globe rather than saving the screen: the Pi's own
