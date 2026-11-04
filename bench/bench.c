@@ -6,8 +6,12 @@
  * surface resolution) and the same surface and dots paths.
  *
  * One scene, BENCH, with two settings that pick the work:
- *   kind   what to ramp (see KINDS below)
- *   level  how much of it: a count for the shader kinds
+ *   kind   what to ramp (see the enum below)
+ *   level  how much of it: a count per pixel for the shader kinds,
+ *          thousands of dots, an upload size (1 to 7) or milliseconds
+ * and one it only reports: cpu_ms, the CPU time of each frame's update
+ * and draw (eased), so a slow step shows whether the CPU or the GPU ran
+ * out.
  * Changing either rebuilds the surface shader with the level baked in as a
  * constant, as a real scene's GLSL would have it. tools/benchrun.py steps
  * through them over the control channel and reads the frame rate from
@@ -31,26 +35,40 @@ enum {
     K_N3,        /* level octaves of real n3 value noise                */
     K_TEX,       /* level scattered lookups in a 2048 x 1024 texture    */
     K_THEME,     /* level theme() calls                                 */
+    K_DOTS,      /* level thousand dots, moved, pushed and drawn         */
+    K_UPLOAD,    /* one glTexSubImage2D a frame, size UPLOADS[level - 1] */
+    K_BUSY,      /* level ms of busy loop on the main thread             */
     K_KINDS
 };
 
 static const char *KIND_NAMES[K_KINDS] = {
     "base", "sin", "acos/atan", "cells", "baked noise", "n3 octaves",
-    "texture", "theme"
+    "texture", "theme", "dots", "upload", "busy"
 };
 
-static struct { float kind, level; } L = { 0.0f, 1.0f };
+/* upload sizes; 0 x 0 means the whole screen */
+static const int UPLOADS[][2] = {
+    { 64, 64 }, { 128, 128 }, { 256, 256 }, { 512, 512 }, { 640, 474 },
+    { 1024, 1024 }, { 0, 0 },
+};
+#define N_UPLOADS ((int)(sizeof UPLOADS / sizeof UPLOADS[0]))
+#define MAX_DOTS  200000
+
+static struct { float kind, level, cpu_ms; } L = { 0.0f, 1.0f, 0.0f };
 
 static Param P[] = {
     { "kind",  &L.kind,  1.0f, 0.0f, K_KINDS - 1, 1,
       "0 base, 1 sin, 2 acos/atan, 3 cells, 4 baked noise, 5 n3 octaves, "
-      "6 texture, 7 theme" },
-    { "level", &L.level, 1.0f, 0.0f, 200.0f, 1, "how much of it: a count per pixel" },
+      "6 texture, 7 theme, 8 dots, 9 upload, 10 busy" },
+    { "level", &L.level, 1.0f, 0.0f, 200.0f, 1,
+      "how much: a count per pixel, thousands of dots, upload size 1 to 7, or ms" },
+    { "cpu_ms", &L.cpu_ms, 0.1f, 0.0f, 1000.0f, 0,
+      "reported, not set: CPU time of each frame's update and draw, ms (eased)" },
 };
 
 /* one source for every kind; KIND and N are defined in front of it */
 static const char *BENCH_GLSL =
-    "uniform sampler2D u_noise, u_big;\n"
+    "uniform sampler2D u_noise, u_big, u_up;\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  float t = u_time * 0.1;\n"
     "  float v = dir.x * 0.3 + dir.y * 0.2 + t;\n"
@@ -83,12 +101,20 @@ static const char *BENCH_GLSL =
     "  for (int i = 0; i < N; i++) { float fi = float(i);\n"
     "    c += theme(mod(fi, 8.0), dir.x * (1.0 + fi) + dir.y * 0.5 + t); }\n"
     "  return vec4(c / float(N), 1.0);\n"
+    "#elif KIND == 9\n"
+    "  v += texture2D(u_up, dir.xy * 0.5 + 0.5).r;\n"
     "#endif\n"
     "  return vec4(fract(v) * vec3(1.0, 0.7, 0.4) + 0.1 * (dir * 0.5 + 0.5), 1.0);\n"
     "}\n";
 
-static GLuint g_prog, g_noise_tex, g_big_tex;
+static GLuint g_prog, g_noise_tex, g_big_tex, g_up_tex;
 static int    g_ready;
+
+static DomePoints g_dots;
+static float     *g_dot_dir;            /* MAX_DOTS unit vectors, then colours */
+static unsigned char *g_up_px;          /* the upload's pixels */
+static int        g_up_w, g_up_h;
+static Uint64     g_t0;                 /* when this frame's update began */
 
 static unsigned hash_u(unsigned x)
 {
@@ -138,13 +164,80 @@ static void init(void)
     for (int i = 0; i < 2048 * 1024; i++) b[i] = hash_u((unsigned)i + 77u);
     g_big_tex = tex_make(2048, 1024, GL_RGBA, GL_CLAMP_TO_EDGE, b);
     free(b);
+    /* dots spread evenly over the sphere (a Fibonacci spiral), each with
+     * a colour, as a particle scene would keep them */
+    g_dot_dir = malloc(sizeof(float) * MAX_DOTS * 6);
+    for (int i = 0; i < MAX_DOTS; i++) {
+        float y = 1.0f - 2.0f * (i + 0.5f) / MAX_DOTS, r = sqrtf(1.0f - y * y);
+        float a = 2.39996323f * i, *d = g_dot_dir + i * 6;
+        d[0] = r * cosf(a); d[1] = y; d[2] = r * sinf(a);
+        dome_theme_rgb(4, (float)i / 977.0f, d + 3);
+    }
+    dome_points_init(&g_dots, MAX_DOTS);
     g_ready = 1;
     rebuild();
+}
+
+static double ms_since(Uint64 t)
+{
+    return (double)(SDL_GetPerformanceCounter() - t) * 1000.0 / SDL_GetPerformanceFrequency();
+}
+
+static void update(const DomeFrame *f)
+{
+    g_t0 = SDL_GetPerformanceCounter();
+    if (kind() == K_BUSY)
+        while (ms_since(g_t0) < level()) {}
+    if (kind() == K_DOTS) {
+        /* four groups turning at their own rates: a few multiplies per
+         * dot, as moving particles need */
+        int n = level() * 1000;
+        if (n > MAX_DOTS) n = MAX_DOTS;
+        float c[4], s[4];
+        for (int g = 0; g < 4; g++) {
+            c[g] = cosf(f->now * (0.1f + 0.05f * g));
+            s[g] = sinf(f->now * (0.1f + 0.05f * g));
+        }
+        dome_points_clear(&g_dots);
+        for (int i = 0; i < n; i++) {
+            const float *d = g_dot_dir + i * 6;
+            int g = i & 3;
+            dome_points_push(&g_dots, d[0] * c[g] - d[2] * s[g], d[1],
+                             d[0] * s[g] + d[2] * c[g], d[3], d[4], d[5], 1.0f);
+        }
+    }
+}
+
+/* the texture for the upload kind, remade when the size changes */
+static void upload(const DomeFrame *f)
+{
+    int i = level() - 1;
+    if (i >= N_UPLOADS) i = N_UPLOADS - 1;
+    int w = UPLOADS[i][0] ? UPLOADS[i][0] : f->width;
+    int h = UPLOADS[i][1] ? UPLOADS[i][1] : f->height;
+    if (w != g_up_w || h != g_up_h) {
+        if (g_up_tex) glDeleteTextures(1, &g_up_tex);
+        free(g_up_px);
+        g_up_px = calloc((size_t)w * h, 4);
+        g_up_tex = tex_make(w, h, GL_RGBA, GL_CLAMP_TO_EDGE, g_up_px);
+        g_up_w = w; g_up_h = h;
+        printf("Bench: uploading %d x %d a frame\n", w, h);
+        fflush(stdout);
+    }
+    /* change a row each frame, so every upload carries new pixels */
+    static unsigned frame;
+    frame++;
+    memset(g_up_px + (size_t)(frame % h) * w * 4, (int)(frame & 255), (size_t)w * 4);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, g_up_tex);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, g_up_px);
+    glActiveTexture(GL_TEXTURE0);
 }
 
 static void draw(const DomeFrame *f)
 {
     if (!g_prog) return;
+    if (kind() == K_UPLOAD) upload(f);
     dome_surface_begin(g_prog, f);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, g_noise_tex);
@@ -152,13 +245,23 @@ static void draw(const DomeFrame *f)
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, g_big_tex);
     glUniform1i(glGetUniformLocation(g_prog, "u_big"), 2);
+    if (g_up_tex) {
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, g_up_tex);
+        glUniform1i(glGetUniformLocation(g_prog, "u_up"), 3);
+    }
     glActiveTexture(GL_TEXTURE0);
     dome_surface_end();
+    if (kind() == K_DOTS) {
+        dome_points_upload(&g_dots);
+        dome_draw_points(&g_dots, f->rot, 1.0f, 2.0f);
+    }
+    L.cpu_ms += ((float)ms_since(g_t0) - L.cpu_ms) * 0.05f;
 }
 
 static Scene scene_bench = {
     "BENCH", "bench.cfg", 0, P, (int)(sizeof P / sizeof P[0]),
-    init, rebuild, NULL, draw, NULL, NULL, NULL
+    init, rebuild, update, draw, NULL, NULL, NULL
 };
 
 int main(int argc, char **argv)
