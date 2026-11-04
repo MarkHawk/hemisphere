@@ -38,13 +38,21 @@ enum {
     K_DOTS,      /* level thousand dots, moved, pushed and drawn         */
     K_UPLOAD,    /* one glTexSubImage2D a frame, size UPLOADS[level - 1] */
     K_BUSY,      /* level ms of busy loop on the main thread             */
+    K_BRANCH,    /* 16 sins behind an if, taken by: 1 none (a setting),  */
+                 /*   2 no pixel, 3 a 10% patch, 4 10% scattered, 5 all */
+    K_MAP,       /* level smooth lookups in a 2048 x 1024 map, no mipmaps */
+    K_MAPMIP,    /* the same with mipmaps                                */
+    K_MAPS,      /* one lookup in each of level different 2048 x 1024 maps */
+    K_MAPSMIP,   /* the same with mipmaps                                */
     K_KINDS
 };
 
 static const char *KIND_NAMES[K_KINDS] = {
     "base", "sin", "acos/atan", "cells", "baked noise", "n3 octaves",
-    "texture", "theme", "dots", "upload", "busy"
+    "texture", "theme", "dots", "upload", "busy", "branch", "map", "map mip",
+    "maps", "maps mip"
 };
+#define N_MAPS 6
 
 /* upload sizes; 0 x 0 means the whole screen */
 static const int UPLOADS[][2] = {
@@ -59,7 +67,7 @@ static struct { float kind, level, cpu_ms; } L = { 0.0f, 1.0f, 0.0f };
 static Param P[] = {
     { "kind",  &L.kind,  1.0f, 0.0f, K_KINDS - 1, 1,
       "0 base, 1 sin, 2 acos/atan, 3 cells, 4 baked noise, 5 n3 octaves, "
-      "6 texture, 7 theme, 8 dots, 9 upload, 10 busy" },
+      "6 texture, 7 theme, 8 dots, 9 upload, 10 busy, 11 branch, 12 map, 13 map mip, 14 maps, 15 maps mip" },
     { "level", &L.level, 1.0f, 0.0f, 200.0f, 1,
       "how much: a count per pixel, thousands of dots, upload size 1 to 7, or ms" },
     { "cpu_ms", &L.cpu_ms, 0.1f, 0.0f, 1000.0f, 0,
@@ -68,7 +76,9 @@ static Param P[] = {
 
 /* one source for every kind; KIND and N are defined in front of it */
 static const char *BENCH_GLSL =
-    "uniform sampler2D u_noise, u_big, u_up;\n"
+    "uniform sampler2D u_noise, u_big, u_up, u_map;\n"
+    "uniform float u_off;\n"
+    "uniform sampler2D u_m0, u_m1, u_m2, u_m3, u_m4, u_m5;\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  float t = u_time * 0.1;\n"
     "  float v = dir.x * 0.3 + dir.y * 0.2 + t;\n"
@@ -103,11 +113,44 @@ static const char *BENCH_GLSL =
     "  return vec4(c / float(N), 1.0);\n"
     "#elif KIND == 9\n"
     "  v += texture2D(u_up, dir.xy * 0.5 + 0.5).r;\n"
+    "#elif KIND == 11\n"
+    /* who takes the branch; none of these can be worked out when compiling */
+    "#if N == 1\n"
+    "  bool take = u_off > 0.5;\n"                                  /* a setting, off */
+    "#elif N == 2\n"
+    "  bool take = view.z > 2.0;\n"                                 /* per pixel, never */
+    "#elif N == 3\n"
+    "  bool take = gl_FragCoord.y > 0.9 * u_size.y;\n"              /* the top tenth */
+    "#elif N == 4\n"
+    "  bool take = fract(gl_FragCoord.x * 0.1 + gl_FragCoord.y * 0.37) < 0.1;\n"   /* scattered */
+    "#else\n"
+    "  bool take = view.z > -2.0;\n"                                /* per pixel, always */
+    "#endif\n"
+    "  if (take) {\n"
+    "    for (int i = 0; i < 16; i++) { float fi = float(i);\n"
+    "      v += sin(dot(dir, vec3(1.3 + fi * 0.37, 2.1 - fi * 0.23, 0.7 + fi * 0.11))\n"
+    "               * (3.0 + fi) + t * (1.0 + 0.1 * fi)); }\n"
+    "  }\n"
+    "#elif KIND == 12 || KIND == 13\n"
+    /* lat/lon once, then lookups close together, as a planet map is read */
+    "  vec2 uv = vec2(atan(dir.x, dir.z) / (2.0 * PI) + 0.5, acos(clamp(dir.y, -1.0, 1.0)) / PI);\n"
+    "  for (int i = 0; i < N; i++) { float fi = float(i);\n"
+    "    v += texture2D(u_map, uv + vec2(0.002 * fi, 0.001 * fi)).g; }\n"
+    "#elif KIND == 14 || KIND == 15\n"
+    /* the same point in several maps, as Weather reads day, night, clouds... */
+    "  vec2 uv = vec2(atan(dir.x, dir.z) / (2.0 * PI) + 0.5, acos(clamp(dir.y, -1.0, 1.0)) / PI);\n"
+    "  v += texture2D(u_m0, uv).r;\n"
+    "#if N >= 2\n  v += texture2D(u_m1, uv).r;\n#endif\n"
+    "#if N >= 3\n  v += texture2D(u_m2, uv).r;\n#endif\n"
+    "#if N >= 4\n  v += texture2D(u_m3, uv).r;\n#endif\n"
+    "#if N >= 5\n  v += texture2D(u_m4, uv).r;\n#endif\n"
+    "#if N >= 6\n  v += texture2D(u_m5, uv).r;\n#endif\n"
     "#endif\n"
     "  return vec4(fract(v) * vec3(1.0, 0.7, 0.4) + 0.1 * (dir * 0.5 + 0.5), 1.0);\n"
     "}\n";
 
-static GLuint g_prog, g_noise_tex, g_big_tex, g_up_tex;
+static GLuint g_prog, g_noise_tex, g_big_tex, g_up_tex, g_mip_tex;
+static GLuint g_maps[N_MAPS], g_maps_mip[N_MAPS];   /* one byte a texel, 2 MB each */
 static int    g_ready;
 
 static DomePoints g_dots;
@@ -163,6 +206,19 @@ static void init(void)
     unsigned *b = malloc((size_t)2048 * 1024 * 4);
     for (int i = 0; i < 2048 * 1024; i++) b[i] = hash_u((unsigned)i + 77u);
     g_big_tex = tex_make(2048, 1024, GL_RGBA, GL_CLAMP_TO_EDGE, b);
+    /* the same pixels again with mipmaps, nearest level, as a planet map
+     * could have them */
+    g_mip_tex = tex_make(2048, 1024, GL_RGBA, GL_CLAMP_TO_EDGE, b);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+    for (int m = 0; m < N_MAPS; m++) {
+        unsigned char *g = (unsigned char *)b;
+        for (int i = 0; i < 2048 * 1024; i++) g[i] = (unsigned char)(hash_u((unsigned)i * 7u + (unsigned)m) >> 24);
+        g_maps[m] = tex_make(2048, 1024, GL_LUMINANCE, GL_CLAMP_TO_EDGE, g);
+        g_maps_mip[m] = tex_make(2048, 1024, GL_LUMINANCE, GL_CLAMP_TO_EDGE, g);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+    }
     free(b);
     /* dots spread evenly over the sphere (a Fibonacci spiral), each with
      * a colour, as a particle scene would keep them */
@@ -245,6 +301,18 @@ static void draw(const DomeFrame *f)
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, g_big_tex);
     glUniform1i(glGetUniformLocation(g_prog, "u_big"), 2);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, kind() == K_MAPMIP ? g_mip_tex : g_big_tex);
+    glUniform1i(glGetUniformLocation(g_prog, "u_map"), 4);
+    glUniform1f(glGetUniformLocation(g_prog, "u_off"), 0.0f);
+    if (kind() == K_MAPS || kind() == K_MAPSMIP) {
+        static const char *NAMES[N_MAPS] = { "u_m0", "u_m1", "u_m2", "u_m3", "u_m4", "u_m5" };
+        for (int m = 0; m < N_MAPS; m++) {          /* units 8 to 13: 7 is the themes' */
+            glActiveTexture(GL_TEXTURE8 + m);
+            glBindTexture(GL_TEXTURE_2D, kind() == K_MAPSMIP ? g_maps_mip[m] : g_maps[m]);
+            glUniform1i(glGetUniformLocation(g_prog, NAMES[m]), 8 + m);
+        }
+    }
     if (g_up_tex) {
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, g_up_tex);

@@ -41,7 +41,15 @@ RAMPS = {
     "dots":    (8, [10, 20, 40, 60, 80, 100, 150, 200]),
     "upload":  (9, [1, 2, 3, 4, 5, 6, 7]),
     "busy":    (10, [2, 4, 6, 8, 10, 12, 14, 16]),
+    "branch":  (11, [1, 2, 3, 4, 5]),
+    "map":     (12, [1, 2, 3, 4, 6, 8]),
+    "mapmip":  (13, [1, 2, 3, 4, 6, 8]),
+    "maps":    (14, [1, 2, 3, 4, 5, 6]),
+    "mapsmip": (15, [1, 2, 3, 4, 5, 6]),
 }
+# ramps that are a set of cases, not more and more work: never cut short
+NO_STOP = {"branch"}
+BRANCH_NAMES = ["setting off", "no pixel", "10% patch", "10% scattered", "every pixel"]
 UPLOAD_NAMES = ["64x64", "128x128", "256x256", "512x512", "640x474",
                 "1024x1024", "full screen"]
 
@@ -133,7 +141,8 @@ def main() -> int:
             kind, levels = RAMPS[name]
             for level in levels:
                 row = {"kind": name, "level": level,
-                       "level_name": UPLOAD_NAMES[level - 1] if name == "upload" else "",
+                       "level_name": UPLOAD_NAMES[level - 1] if name == "upload"
+                       else BRANCH_NAMES[level - 1] if name == "branch" else "",
                        "time": time.strftime("%H:%M:%S")}
                 if not show(ctl, kind, level):
                     row.update(samples=0, status="FAILED", temp_c=temp_c(), throttled=throttled())
@@ -154,7 +163,8 @@ def main() -> int:
                       f"{row['temp_c']} C {row['throttled']} {row['status']}", file=sys.stderr)
                 if stopped:
                     break
-                if row["status"] == "ok" and float(row["avg"]) < args.stop_below:
+                if row["status"] == "ok" and float(row["avg"]) < args.stop_below \
+                        and name not in NO_STOP:
                     break
             if stopped:
                 print(f"run stopped: {stopped}", file=sys.stderr)
