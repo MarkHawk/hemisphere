@@ -155,41 +155,49 @@ static const char LAVA[] =
 /* ---- 5: tie-dye. Five dyes wound into a spiral round a fold point,
  * crinkled where the cloth was bunched, with pale bleed lines between
  * the bands. Every 40 seconds a new fold point is dyed and its colours
- * spread out over the old ones until they cover the globe. ---- */
+ * spread out over the old ones until they cover the globe. The fold
+ * points and their axes only move with time, so tiedye_folds() works
+ * them out on the CPU: [0] the old dye's, [1] the fresh one's. Each
+ * pattern is only drawn where it shows. ---- */
 static const char TIEDYE[] =
     U
-    "vec3 dye(float i){\n"
-    "  i = mod(i, 5.0);\n"
-    "  if (i < 1.0) return vec3(0.95, 0.08, 0.45);\n"     /* magenta */
-    "  if (i < 2.0) return vec3(1.00, 0.50, 0.05);\n"     /* orange  */
-    "  if (i < 3.0) return vec3(1.00, 0.90, 0.12);\n"     /* yellow  */
-    "  if (i < 4.0) return vec3(0.08, 0.70, 0.95);\n"     /* sky     */
-    "  return vec3(0.42, 0.12, 0.85);\n"                  /* purple  */
+    "uniform vec3 u_fc[2], u_fe1[2], u_fe2[2];\n"
+    "uniform float u_k, u_ph, u_dry;\n"
+    "uniform sampler2D u_dye;\n"                         /* the five dyes, DYES below */
+    /* dye i blended into dye i + 1 by s: the strip repeats the first dye
+     * at its end and is filtered, so one lookup does the blend */
+    "vec3 dyes(float i, float s){\n"
+    "  float m = floor(fract((i + 0.5) * 0.2) * 5.0);\n"
+    "  return texture2D(u_dye, vec2((m + 0.5 + s) / 6.0, 0.5)).rgb;\n"
     "}\n"
-    "vec3 fold(float k){\n"                               /* fold point of dye cycle k */
-    "  return normalize(vec3(sin(k * 2.4), 0.6 * sin(k * 1.7 + 1.0), cos(k * 2.4)));\n"
-    "}\n"
-    "vec3 pattern(vec3 dir, float k, out float a){\n"
-    "  vec3 C = fold(k);\n"
-    "  a = acos(clamp(dot(dir, C), -1.0, 1.0));\n"
-    "  vec3 e1 = normalize(cross(C, vec3(0.31, 0.95, 0.0)));\n"
-    "  vec3 e2 = cross(C, e1);\n"
+    "vec3 pattern(vec3 dir, float k, float a, vec3 e1, vec3 e2){\n"
     "  float th = atan(dot(dir, e2), dot(dir, e1));\n"
     "  float crk = sin(th * 7.0 + a * 5.0) * 0.18 + sin(th * 19.0 - a * 13.0) * 0.07;\n"
     "  float v = a * 3.2 * u_scale + th * 5.0 / (2.0 * PI) + crk - u_t * 0.05;\n"
     "  float f = fract(v), i = floor(v) + k * 2.0;\n"
-    "  vec3 col = mix(dye(i), dye(i + 1.0), smoothstep(0.80, 1.0, f));\n"
+    "  vec3 col = dyes(i, smoothstep(0.80, 1.0, f));\n"
     "  col = mix(col, vec3(1.0, 0.97, 0.92), 0.55 * smoothstep(0.07, 0.0, min(f, 1.0 - f)));\n"
     "  return col * (0.88 + 0.12 * sin(th * 40.0 + a * 30.0));\n"   /* weave */
     "}\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
-    "  float T = u_t / 40.0, k = floor(T), ph = fract(T);\n"
-    "  float a0, a1;\n"
-    "  vec3 old = pattern(dir, k - 1.0, a0);\n"
-    "  vec3 fresh = pattern(dir, k, a1);\n"
+    "  float k = u_k, ph = u_ph;\n"
+    "  float d1 = dot(dir, u_fc[1]);\n"
+    /* not reached by the new dye yet (a1 > R + 0.25): the old pattern
+     * alone, and the wet edge is too faint to see (under 0.2%) */
+    "  if (d1 < u_dry) {\n"
+    "    float a0 = acos(clamp(dot(dir, u_fc[0]), -1.0, 1.0));\n"
+    "    return vec4(pattern(dir, k - 1.0, a0, u_fe1[0], u_fe2[0]) * u_bright, 1.0);\n"
+    "  }\n"
+    "  float a1 = acos(clamp(d1, -1.0, 1.0));\n"
     "  float R = ph * 4.2;\n"                            /* the new dye front */
     "  float wet = smoothstep(R + 0.25, R - 0.05, a1);\n"
-    "  vec3 col = mix(old, fresh, wet);\n"
+    "  vec3 col;\n"
+    "  if (wet >= 1.0) col = pattern(dir, k, a1, u_fe1[1], u_fe2[1]);\n"
+    "  else {\n"
+    "    float a0 = acos(clamp(dot(dir, u_fc[0]), -1.0, 1.0));\n"
+    "    col = mix(pattern(dir, k - 1.0, a0, u_fe1[0], u_fe2[0]),\n"
+    "              pattern(dir, k, a1, u_fe1[1], u_fe2[1]), wet);\n"
+    "  }\n"
     "  col *= 1.0 - 0.25 * exp(-pow((a1 - R) * 9.0, 2.0)) * step(ph, 0.85);\n"   /* dark wet edge */
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
@@ -431,6 +439,57 @@ static void lava_blobs(GLuint p)
     glUniform4fv(glGetUniformLocation(p, "u_blob"), LAVA_BLOBS, b);
 }
 
+/* tie-dye's five dyes, then the first again, in a strip (a lookup is
+ * much quicker on the Pi than choosing among them with ifs) */
+static const unsigned char DYES[6][4] = {
+    { 242, 20, 115, 255 },     /* magenta */
+    { 255, 128, 13, 255 },     /* orange  */
+    { 255, 230, 31, 255 },     /* yellow  */
+    { 20, 179, 242, 255 },     /* sky     */
+    { 107, 31, 217, 255 },     /* purple  */
+    { 242, 20, 115, 255 },     /* magenta again */
+};
+static GLuint g_dye_tex;
+
+/* tie-dye's fold point of dye cycle k, and the axes the spiral winds round */
+static void tiedye_folds(GLuint p)
+{
+    float T = g_t / 40.0f, k = floorf(T), c[6], e1[6], e2[6];
+    for (int j = 0; j < 2; j++) {
+        float kk = k - 1.0f + (float)j, *C = c + j * 3, *a = e1 + j * 3, *b = e2 + j * 3;
+        C[0] = sinf(kk * 2.4f); C[1] = 0.6f * sinf(kk * 1.7f + 1.0f); C[2] = cosf(kk * 2.4f);
+        float n = sqrtf(C[0] * C[0] + C[1] * C[1] + C[2] * C[2]);
+        C[0] /= n; C[1] /= n; C[2] /= n;
+        a[0] = -C[2] * 0.95f; a[1] = C[2] * 0.31f; a[2] = C[0] * 0.95f - C[1] * 0.31f;
+        n = sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+        a[0] /= n; a[1] /= n; a[2] /= n;
+        b[0] = C[1] * a[2] - C[2] * a[1];
+        b[1] = C[2] * a[0] - C[0] * a[2];
+        b[2] = C[0] * a[1] - C[1] * a[0];
+    }
+    glUniform3fv(glGetUniformLocation(p, "u_fc"), 2, c);
+    glUniform3fv(glGetUniformLocation(p, "u_fe1"), 2, e1);
+    glUniform3fv(glGetUniformLocation(p, "u_fe2"), 2, e2);
+    glUniform1f(glGetUniformLocation(p, "u_k"), k);
+    if (!g_dye_tex) {
+        glGenTextures(1, &g_dye_tex);
+        glBindTexture(GL_TEXTURE_2D, g_dye_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 6, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, DYES);
+    }
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, g_dye_tex);
+    glUniform1i(glGetUniformLocation(p, "u_dye"), 1);
+    glActiveTexture(GL_TEXTURE0);
+    glUniform1f(glGetUniformLocation(p, "u_ph"), T - k);
+    /* cos of the dry edge, a1 = R + 0.25; past the far side, nothing is dry */
+    float dry = (T - k) * 4.2f + 0.25f;
+    glUniform1f(glGetUniformLocation(p, "u_dry"), dry < 3.14159265f ? cosf(dry) : -2.0f);
+}
+
 static void draw(const DomeFrame *f)
 {
     int s = style();
@@ -440,6 +499,7 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     if (s == 3) lava_blobs(p);
+    if (s == 5) tiedye_folds(p);
     dome_surface_end();
     if (s == 7) spiro_draw(f);
 }
