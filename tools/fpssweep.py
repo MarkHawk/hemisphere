@@ -34,13 +34,30 @@ FIELDS = ["scene", "scene_name", "pick", "value", "value_name", "variant",
 
 
 class Ctl:
-    def __init__(self, port: int):
+    """The control channel. Replies carry no tag, so a reply that comes
+    after its timeout (a scene rebuilding its textures can hold the main
+    loop for a second) would be read as the answer to the next command:
+    anything left waiting is thrown away before each send."""
+
+    def __init__(self, port: int, timeout: float = 3.0):
         self.addr = ("127.0.0.1", port)
+        self.timeout = timeout
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.s.settimeout(1.0)
+        self.s.settimeout(timeout)
+
+    def _drain(self) -> None:
+        self.s.setblocking(False)
+        try:
+            while True:
+                self.s.recv(65536)
+        except BlockingIOError:
+            pass
+        finally:
+            self.s.settimeout(self.timeout)
 
     def ask(self, cmd: str) -> str:
         for _ in range(3):
+            self._drain()
             self.s.sendto(cmd.encode(), self.addr)
             try:
                 return self.s.recv(65536).decode()
@@ -49,7 +66,13 @@ class Ctl:
         raise RuntimeError(f"no reply to {cmd!r} on port {self.addr[1]}")
 
     def json(self, cmd: str) -> dict:
-        return json.loads(self.ask(cmd))
+        for _ in range(3):
+            reply = self.ask(cmd)
+            try:
+                return json.loads(reply)
+            except ValueError:
+                continue
+        raise RuntimeError(f"no JSON reply to {cmd!r}: {reply[:60]!r}")
 
 
 def choice_name(hint: str, n: int) -> str:

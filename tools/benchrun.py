@@ -120,8 +120,7 @@ def main() -> int:
         if k not in RAMPS:
             sys.exit(f"--kinds: no ramp {k!r}; choose from {','.join(RAMPS)}")
 
-    ctl = Ctl(args.port)
-    ctl.s.settimeout(5.0)          # a big shader can take a moment to build
+    ctl = Ctl(args.port, timeout=5.0)   # a big shader can take a moment to build
     if ctl.json("state").get("name") != "BENCH":
         sys.exit("the program on the control channel is not hemisphere-bench")
 
