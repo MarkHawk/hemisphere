@@ -128,3 +128,26 @@ These environment variables are for testing and previewing:
 | `DOME_SHOT=n` | Save frame n to `shot.ppm` and quit |
 | `DOME_AUDIO_DEBUG=1` | Print the sound levels, beat and tempo twice a second (see [Sound from WLED](sound.md#sound-from-wled)) |
 | `DOME_THEME_CHECK=1` | At start, draw every colour theme both ways (its formula and the lookup table) and print the largest difference: about 0.008, a little more at jewel's sharp edges |
+
+## Measuring frame rates and limits
+
+Two tools in `tools/` measure on the Pi itself, over the control channel,
+reading the frame rate from `state` (counted over 2 second windows). Both
+need the dome to themselves: stop the web remote and the now-playing tool
+first, so nothing else switches scenes.
+
+* **Every scene and style:** with Hemisphere running,
+  `venv/bin/python tools/fpssweep.py --out fps.csv` measures each value of
+  each scene's style, theme or view for 20 seconds, with the temperature
+  and `vcgencmd get_throttled`. `--scenes` picks some, and
+  `--vary 0:audio=0,1` repeats a scene's styles with a setting off and on.
+* **The Pi's limits:** `make bench` builds `hemisphere-bench`, a program
+  of its own (not one of Hemisphere's scenes) that uses the same lens
+  setup and surface size. Stop Hemisphere (`tools/start-hemisphere.sh
+  --stop`), start `./hemisphere-bench` on the dome's screen, then run
+  `venv/bin/python tools/benchrun.py --out bench.csv`. It ramps one kind of
+  work at a time (sins, acos and atan, hashed cells, baked noise, `n3`
+  octaves, texture lookups, `theme()` calls, dots, texture uploads and CPU
+  time) until the frame rate drops under 50, and records the clocks,
+  temperature and throttle state for each step. It takes about half an
+  hour.
