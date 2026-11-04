@@ -132,19 +132,18 @@ static const char FLOWERS[] =
     "  return vec4(c * u_bright, 1.0);\n"
     "}\n";
 
-/* ---- 3: lava lamp (fixed to the dome) ---- */
+/* ---- 3: lava lamp (fixed to the dome). The blobs only move with
+ * time, so lava_blobs() places them once a frame on the CPU: each is a
+ * centre and its radius squared. ---- */
+#define LAVA_BLOBS 7
 static const char LAVA[] =
     U
+    "uniform vec4 u_blob[7];\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  float F = 0.0;\n"
     "  for (int i = 0; i < 7; i++) {\n"
-    "    float fi = float(i);\n"
-    "    vec3 c = normalize(vec3(sin(fi * 1.7 + u_t * 0.07 * (1.0 + fi * 0.13)) * 0.7,\n"
-    "                            sin(u_t * (0.05 + fi * 0.017) + fi * 2.1) * 0.95,\n"
-    "                            0.6 + 0.4 * cos(fi * 2.3 + u_t * 0.03)));\n"
-    "    float r = (0.25 + 0.08 * sin(fi * 3.1)) / u_scale;\n"
-    "    vec3 d = view - c;\n"
-    "    F += r * r / max(dot(d, d), 1e-4);\n"
+    "    vec3 d = view - u_blob[i].xyz;\n"
+    "    F += u_blob[i].w / max(dot(d, d), 1e-4);\n"
     "  }\n"
     "  vec3 col = mix(vec3(0.20, 0.02, 0.14), vec3(0.50, 0.05, 0.12), view.y * 0.5 + 0.5) * 0.7;\n"
     "  col += vec3(1.0, 0.30, 0.05) * smoothstep(0.4, 1.0, F) * 0.25;\n"      /* glow */
@@ -417,6 +416,21 @@ static void update(const DomeFrame *f)
     if (style() == 7) spiro_update(dt);
 }
 
+static void lava_blobs(GLuint p)
+{
+    float b[LAVA_BLOBS * 4];
+    for (int i = 0; i < LAVA_BLOBS; i++) {
+        float fi = (float)i, *o = b + i * 4;
+        float x = sinf(fi * 1.7f + g_t * 0.07f * (1.0f + fi * 0.13f)) * 0.7f;
+        float y = sinf(g_t * (0.05f + fi * 0.017f) + fi * 2.1f) * 0.95f;
+        float z = 0.6f + 0.4f * cosf(fi * 2.3f + g_t * 0.03f);
+        float n = sqrtf(x * x + y * y + z * z);
+        float r = (0.25f + 0.08f * sinf(fi * 3.1f)) / L.scale;
+        o[0] = x / n; o[1] = y / n; o[2] = z / n; o[3] = r * r;
+    }
+    glUniform4fv(glGetUniformLocation(p, "u_blob"), LAVA_BLOBS, b);
+}
+
 static void draw(const DomeFrame *f)
 {
     int s = style();
@@ -425,6 +439,7 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_t"), g_t);
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
+    if (s == 3) lava_blobs(p);
     dome_surface_end();
     if (s == 7) spiro_draw(f);
 }
