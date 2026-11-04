@@ -1,6 +1,7 @@
 # build output
 *.o
 /hemisphere
+/hemisphere-bench
 shot.ppm
 
 # Python
@@ -32,6 +33,7 @@ weather.cfg
 eyes.cfg
 music.cfg
 nowplaying.cfg
+bench.cfg
 
 # your own photos for the tape loading style
 tapes/

@@ -56,7 +56,16 @@ scenes/planet.o: scenes/planet.c $(HDR) third_party/stb_image.h
 scenes/weather.o: scenes/weather.c $(HDR) third_party/stb_image.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-function -c -o $@ $<
 
-clean:
-	rm -f hemisphere hemisphere.exe $(OBJ)
+# hemisphere-bench: the Pi 3 limits bench, a program of its own (make bench);
+# it is not one of Hemisphere's scenes. See docs/writing-scenes.md.
+BENCH     = hemisphere-bench
+BENCH_OBJ = bench/bench.o dome/dome.o dome/glload.o dome/text.o dome/audio.o
+bench: $(BENCH)
+$(BENCH): $(BENCH_OBJ)
+	$(CC) -o $@ $(BENCH_OBJ) $(LDLIBS)
+bench/bench.o: $(HDR)
 
-.PHONY: clean
+clean:
+	rm -f hemisphere hemisphere.exe $(OBJ) $(BENCH) bench/bench.o
+
+.PHONY: clean bench
