@@ -44,13 +44,16 @@ enum {
     K_MAPMIP,    /* the same with mipmaps                                */
     K_MAPS,      /* one lookup in each of level different 2048 x 1024 maps */
     K_MAPSMIP,   /* the same with mipmaps                                */
+    K_FMT,       /* one lookup in each of 6 maps in one format: 1 luminance, */
+                 /*   2 RGB, 3 RGBA, 4 luminance-alpha at 1024 x 512,     */
+                 /*   5 luminance at 1137 x 728, 6 Weather's own mix      */
     K_KINDS
 };
 
 static const char *KIND_NAMES[K_KINDS] = {
     "base", "sin", "acos/atan", "cells", "baked noise", "n3 octaves",
     "texture", "theme", "dots", "upload", "busy", "branch", "map", "map mip",
-    "maps", "maps mip"
+    "maps", "maps mip", "formats"
 };
 #define N_MAPS 6
 
@@ -67,7 +70,7 @@ static struct { float kind, level, cpu_ms; } L = { 0.0f, 1.0f, 0.0f };
 static Param P[] = {
     { "kind",  &L.kind,  1.0f, 0.0f, K_KINDS - 1, 1,
       "0 base, 1 sin, 2 acos/atan, 3 cells, 4 baked noise, 5 n3 octaves, "
-      "6 texture, 7 theme, 8 dots, 9 upload, 10 busy, 11 branch, 12 map, 13 map mip, 14 maps, 15 maps mip" },
+      "6 texture, 7 theme, 8 dots, 9 upload, 10 busy, 11 branch, 12 map, 13 map mip, 14 maps, 15 maps mip, 16 formats" },
     { "level", &L.level, 1.0f, 0.0f, 200.0f, 1,
       "how much: a count per pixel, thousands of dots, upload size 1 to 7, or ms" },
     { "cpu_ms", &L.cpu_ms, 0.1f, 0.0f, 1000.0f, 0,
@@ -136,21 +139,24 @@ static const char *BENCH_GLSL =
     "  vec2 uv = vec2(atan(dir.x, dir.z) / (2.0 * PI) + 0.5, acos(clamp(dir.y, -1.0, 1.0)) / PI);\n"
     "  for (int i = 0; i < N; i++) { float fi = float(i);\n"
     "    v += texture2D(u_map, uv + vec2(0.002 * fi, 0.001 * fi)).g; }\n"
-    "#elif KIND == 14 || KIND == 15\n"
+    "#elif KIND == 14 || KIND == 15 || KIND == 16\n"
     /* the same point in several maps, as Weather reads day, night, clouds... */
     "  vec2 uv = vec2(atan(dir.x, dir.z) / (2.0 * PI) + 0.5, acos(clamp(dir.y, -1.0, 1.0)) / PI);\n"
+    "#if KIND == 16\n#define M 6\n#else\n#define M N\n#endif\n"
     "  v += texture2D(u_m0, uv).r;\n"
-    "#if N >= 2\n  v += texture2D(u_m1, uv).r;\n#endif\n"
-    "#if N >= 3\n  v += texture2D(u_m2, uv).r;\n#endif\n"
-    "#if N >= 4\n  v += texture2D(u_m3, uv).r;\n#endif\n"
-    "#if N >= 5\n  v += texture2D(u_m4, uv).r;\n#endif\n"
-    "#if N >= 6\n  v += texture2D(u_m5, uv).r;\n#endif\n"
+    "#if M >= 2\n  v += texture2D(u_m1, uv).r;\n#endif\n"
+    "#if M >= 3\n  v += texture2D(u_m2, uv).r;\n#endif\n"
+    "#if M >= 4\n  v += texture2D(u_m3, uv).r;\n#endif\n"
+    "#if M >= 5\n  v += texture2D(u_m4, uv).r;\n#endif\n"
+    "#if M >= 6\n  v += texture2D(u_m5, uv).r;\n#endif\n"
     "#endif\n"
     "  return vec4(fract(v) * vec3(1.0, 0.7, 0.4) + 0.1 * (dir * 0.5 + 0.5), 1.0);\n"
     "}\n";
 
 static GLuint g_prog, g_noise_tex, g_big_tex, g_up_tex, g_mip_tex;
 static GLuint g_maps[N_MAPS], g_maps_mip[N_MAPS];   /* one byte a texel, 2 MB each */
+static GLuint g_fmt[N_MAPS];                        /* the formats kind's, made on demand */
+static int    g_fmt_level;
 static int    g_ready;
 
 static DomePoints g_dots;
@@ -181,9 +187,43 @@ static GLuint tex_make(int w, int h, GLenum fmt, GLint wrap, const void *px)
 static int kind(void)  { int k = (int)lroundf(L.kind); return k < 0 ? 0 : k; }
 static int level(void) { int n = (int)lroundf(L.level); return n < 1 ? 1 : n; }
 
+/* the six maps for the formats kind at this level, in the formats
+ * Weather loads: day and night RGB, clouds luminance, the land mask
+ * luminance-alpha at 1024 x 512, the local picture luminance at an
+ * odd size */
+static void fmt_make(int lv)
+{
+    if (lv > 6) lv = 6;
+    if (lv == g_fmt_level) return;
+    glDeleteTextures(N_MAPS, g_fmt);
+    memset(g_fmt, 0, sizeof g_fmt);
+    g_fmt_level = 0;
+    unsigned char *px = malloc((size_t)2048 * 1024 * 4);
+    if (!px) return;
+    for (int m = 0; m < N_MAPS; m++) {
+        static const GLenum MIX[N_MAPS] = { GL_RGB, GL_RGB, GL_LUMINANCE, GL_LUMINANCE,
+                                            GL_LUMINANCE_ALPHA, GL_LUMINANCE };
+        GLenum fmt = lv == 1 ? GL_LUMINANCE : lv == 2 ? GL_RGB : lv == 3 ? GL_RGBA
+                   : lv == 4 ? GL_LUMINANCE_ALPHA : lv == 5 ? GL_LUMINANCE : MIX[m];
+        int w = 2048, h = 1024;
+        if (lv == 4 || (lv == 6 && m == 4)) { w = 1024; h = 512; }
+        if (lv == 5 || (lv == 6 && m == 5)) { w = 1137; h = 728; }
+        int bpp = fmt == GL_RGBA ? 4 : fmt == GL_RGB ? 3 : fmt == GL_LUMINANCE_ALPHA ? 2 : 1;
+        for (size_t i = 0; i < (size_t)w * h * bpp; i++)
+            px[i] = (unsigned char)(hash_u((unsigned)i * 5u + (unsigned)m) >> 24);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);      /* odd widths in RGB */
+        g_fmt[m] = tex_make(w, h, fmt, GL_CLAMP_TO_EDGE, px);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    }
+    free(px);
+    g_fmt_level = lv;
+    printf("Bench: formats case %d made\n", lv);
+}
+
 static void rebuild(void)
 {
     if (!g_ready) return;
+    if (kind() == K_FMT) fmt_make(level());
     char *src = malloc(strlen(BENCH_GLSL) + 64);
     sprintf(src, "#define KIND %d\n#define N %d\n%s", kind(), level(), BENCH_GLSL);
     GLuint p = dome_surface_program_themed(src);
@@ -305,11 +345,12 @@ static void draw(const DomeFrame *f)
     glBindTexture(GL_TEXTURE_2D, kind() == K_MAPMIP ? g_mip_tex : g_big_tex);
     glUniform1i(glGetUniformLocation(g_prog, "u_map"), 4);
     glUniform1f(glGetUniformLocation(g_prog, "u_off"), 0.0f);
-    if (kind() == K_MAPS || kind() == K_MAPSMIP) {
+    if (kind() == K_MAPS || kind() == K_MAPSMIP || kind() == K_FMT) {
         static const char *NAMES[N_MAPS] = { "u_m0", "u_m1", "u_m2", "u_m3", "u_m4", "u_m5" };
         for (int m = 0; m < N_MAPS; m++) {          /* units 8 to 13: 7 is the themes' */
             glActiveTexture(GL_TEXTURE8 + m);
-            glBindTexture(GL_TEXTURE_2D, kind() == K_MAPSMIP ? g_maps_mip[m] : g_maps[m]);
+            glBindTexture(GL_TEXTURE_2D, kind() == K_FMT ? g_fmt[m]
+                          : kind() == K_MAPSMIP ? g_maps_mip[m] : g_maps[m]);
             glUniform1i(glGetUniformLocation(g_prog, NAMES[m]), 8 + m);
         }
     }

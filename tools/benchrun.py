@@ -46,10 +46,12 @@ RAMPS = {
     "mapmip":  (13, [1, 2, 3, 4, 6, 8]),
     "maps":    (14, [1, 2, 3, 4, 5, 6]),
     "mapsmip": (15, [1, 2, 3, 4, 5, 6]),
+    "formats": (16, [1, 2, 3, 4, 5, 6]),
 }
 # ramps that are a set of cases, not more and more work: never cut short
-NO_STOP = {"branch"}
+NO_STOP = {"branch", "formats"}
 BRANCH_NAMES = ["setting off", "no pixel", "10% patch", "10% scattered", "every pixel"]
+FORMAT_NAMES = ["luminance", "RGB", "RGBA", "lum-alpha half", "lum 1137x728", "Weather mix"]
 UPLOAD_NAMES = ["64x64", "128x128", "256x256", "512x512", "640x474",
                 "1024x1024", "full screen"]
 
@@ -142,7 +144,8 @@ def main() -> int:
             for level in levels:
                 row = {"kind": name, "level": level,
                        "level_name": UPLOAD_NAMES[level - 1] if name == "upload"
-                       else BRANCH_NAMES[level - 1] if name == "branch" else "",
+                       else BRANCH_NAMES[level - 1] if name == "branch"
+                       else FORMAT_NAMES[level - 1] if name == "formats" else "",
                        "time": time.strftime("%H:%M:%S")}
                 if not show(ctl, kind, level):
                     row.update(samples=0, status="FAILED", temp_c=temp_c(), throttled=throttled())
