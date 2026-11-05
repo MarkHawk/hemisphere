@@ -476,8 +476,9 @@ static const char LISTING[] =
     /* title and status lines in inverse video, rows 36 and 37 of the grid */
     "  float tb = step(0.73, fl.y) * step(fl.y, 0.81) * step(abs(fl.x), 0.52);\n"
     "  float bb = step(-0.81, fl.y) * step(fl.y, -0.73) * step(abs(fl.x), 0.52);\n"
-    "  float tt = textcell(vec2((fl.x + 0.52) / 0.035, 36.0 + (0.80 - fl.y) / 0.07)) * tb\n"
-    "           + textcell(vec2((fl.x + 0.52) / 0.035, 37.0 + (-0.74 - fl.y) / 0.07)) * bb;\n"
+    /* the two lines never overlap, so one textcell() reads either */
+    "  float tt = textcell(vec2((fl.x + 0.52) / 0.035, fl.y > 0.0 ? 36.0 + (0.80 - fl.y) / 0.07\n"
+    "                                                            : 37.0 + (-0.74 - fl.y) / 0.07)) * (tb + bb);\n"
     "  col = mix(col, u_ph * 0.8 * (1.0 - tt), max(tb, bb));\n"
     "  col *= 0.82 + 0.18 * sin(fl.y * 900.0);\n"
     "  col *= 1.0 - 0.4 * smoothstep(75.0, 90.0, a);\n"
