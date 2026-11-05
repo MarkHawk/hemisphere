@@ -574,6 +574,7 @@ static void draw(const DomeFrame *f)
     int s = style();
     GLuint p = g_prog[s];
     if (s == 4) dome_surface_res(512.0f);      /* too slow at 640 on a Pi 3 */
+    if (s == 5) dome_surface_res(512.0f);
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), g_t);
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
