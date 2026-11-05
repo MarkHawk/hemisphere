@@ -127,7 +127,11 @@ static int phos_i(void)
 /* ---------------------------------------------------------------- */
 /* Solid hull                                                        */
 /* ---------------------------------------------------------------- */
-static const char *HULL_GLSL =
+/* The hull. Its plating (everything outside the dish) depends only on
+ * the direction and the look settings, so HULL_PLATE is run once into a
+ * cube map (hull_bake(), again whenever a plating setting changes) and
+ * the hull shader reads it back; only the dish is worked out per frame. */
+static const char HULL_HEAD[] =
     "uniform vec3  u_dish;\n"
     "uniform float u_dish_ang;\n"
     "uniform float u_dish_dep;\n"
@@ -145,9 +149,9 @@ static const char *HULL_GLSL =
     "  if (th >= u_dish_ang) return step(r, 1.0);\n"
     "  float q = th / u_dish_ang;\n"
     "  return step(r, 1.0 - u_dish_dep * (1.0 - q * q));\n"
-    "}\n"
-    "vec4 surface(vec3 dir, vec3 view){\n"
-    "  vec3 light = normalize(vec3(-0.40, 0.50, 0.77));\n"
+    "}\n";
+
+static const char HULL_PLATE[] =
     "  float lat = asin(clamp(dir.y, -1.0, 1.0));\n"
     "  float lon = atan(dir.x, dir.z);\n"
     /* hull plating, laid out like a real build: latitude bands of fixed
@@ -200,16 +204,24 @@ static const char *HULL_GLSL =
     "    vec2 wq = abs(sf - 0.5);\n"
     "    win = step(wq.x, 0.22) * step(wq.y, 0.16) * (0.6 + 0.4 * fract(h3 * 7.0));\n"
     "  }\n"
-    "  vec3 n = dir;\n"
-    "  vec3 glow = vec3(0.0);\n"
-    "  float dsh = 0.0, lip = 0.0;\n"
     /* equatorial trench */
     "  if (abs(lat) < 0.0384) {\n"
     "    float rib = fract(lon * 90.0 / PI);\n"           /* a rib every 2 degrees */
     "    col *= 0.30 * (0.75 + 0.25 * smoothstep(0.30, 0.45, abs(rib - 0.5)) * u_detail);\n"
     "    win = step(0.93, hash(vec2(floor(lon * 90.0 / PI), 3.0))) * step(abs(lat), 0.010)\n"
     "        * step(abs(rib - 0.5), 0.18);\n"
-    "  }\n"
+    "  }\n";
+
+static const char HULL_MAIN[] =
+    "uniform samplerCube u_plate;\n"
+    "vec4 surface(vec3 dir, vec3 view){\n"
+    "  vec3 light = normalize(vec3(-0.40, 0.50, 0.77));\n"
+    "  vec4 pl = textureCube(u_plate, dir);\n"
+    "  vec3 col = vec3(0.62, 0.65, 0.70) * pl.r * 1.25;\n"
+    "  float win = pl.g;\n"
+    "  vec3 n = dir;\n"
+    "  vec3 glow = vec3(0.0);\n"
+    "  float dsh = 0.0, lip = 0.0;\n"
     /* superlaser dish: a real bowl. The line of sight from the viewer
      * (u_eye radii in front, as the wireframe uses) is traced into the
      * bowl, so the hull dish shifts with depth exactly like the wire rings.
@@ -275,6 +287,31 @@ static const char *HULL_GLSL =
     "  vec3 lit = col * (0.16 + 0.10 * step(0.0001, dsh + lip + float(ang < u_dish_ang)) + 0.90 * diff + 0.35 * lip);\n"
     "  vec3 wl = vec3(1.0, 0.88, 0.62) * win * u_windows * (0.60 - 0.52 * diff);\n"
     "  return vec4((lit + wl) * u_hull + glow * step(0.001, u_hull), 1.0);\n"
+    "}\n";
+
+/* the bake: one cube face at a time, dir from the face's own axes */
+#define PLATE_N 1024                  /* texels across each face: finer than the screen's pixels */
+static GLuint g_bake_prog, g_plate_tex, g_bake_fbo, g_bake_vbo;
+static float  g_plate_key[6] = { -1 };
+static const char BAKE_VS[] =
+    "attribute vec2 a_pos;\n"
+    "void main(){ gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }\n";
+static const char BAKE_TOP[] =
+    "#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
+    "precision highp float;\n"
+    "#else\n"
+    "precision mediump float;\n"
+    "#endif\n"
+    "const float PI = 3.14159265;\n"
+    "uniform mat3 u_rot_inv;\n"
+    "uniform vec3 u_fu, u_fv, u_fc;\n"
+    "uniform float u_n;\n";
+static const char BAKE_MAIN[] =
+    "void main(){\n"
+    "  vec2 uv = gl_FragCoord.xy / u_n * 2.0 - 1.0;\n"
+    "  vec3 dir = normalize(u_fc + u_fu * uv.x + u_fv * uv.y);\n";
+static const char BAKE_END[] =
+    "  gl_FragColor = vec4(col.r / 0.62 / 1.25, win, 0.0, 1.0);\n"
     "}\n";
 
 /* ---------------------------------------------------------------- */
@@ -435,11 +472,80 @@ static void rebuild(void)
     dome_points_upload(pp);
 }
 
+/* run HULL_PLATE into the cube map, if a plating setting has changed */
+static void hull_bake(void)
+{
+    float key[6] = { L.panels, L.panel_h, L.panel_w, floorf(L.seam_y + 0.5f), floorf(L.seam_x + 0.5f), L.detail };
+    if (!memcmp(key, g_plate_key, sizeof key) || !g_bake_prog) return;
+    Uint32 t0 = SDL_GetTicks();
+    if (!g_plate_tex) {
+        glGenTextures(1, &g_plate_tex);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, g_plate_tex);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        for (int f = 0; f < 6; f++)
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, GL_RGBA, PLATE_N, PLATE_N, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glGenFramebuffers(1, &g_bake_fbo);
+        static const float quad[8] = { 0,0, 1,0, 0,1, 1,1 };
+        glGenBuffers(1, &g_bake_vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, g_bake_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
+    }
+    /* each GL cube face: its centre, and the directions of its s and t */
+    static const float FACE[6][9] = {
+        { 1, 0, 0,   0, 0, -1,   0, -1, 0 }, { -1, 0, 0,  0, 0, 1,   0, -1, 0 },
+        { 0, 1, 0,   1, 0, 0,    0, 0, 1 },  { 0, -1, 0,  1, 0, 0,   0, 0, -1 },
+        { 0, 0, 1,   1, 0, 0,    0, -1, 0 }, { 0, 0, -1,  -1, 0, 0,  0, -1, 0 },
+    };
+    GLuint p = g_bake_prog;
+    glUseProgram(p);
+    glUniform1f(glGetUniformLocation(p, "u_panels"), L.panels);
+    glUniform1f(glGetUniformLocation(p, "u_panel_h"), L.panel_h);
+    glUniform1f(glGetUniformLocation(p, "u_panel_w"), L.panel_w);
+    glUniform1f(glGetUniformLocation(p, "u_seam_y"), key[3]);
+    glUniform1f(glGetUniformLocation(p, "u_seam_x"), key[4]);
+    glUniform1f(glGetUniformLocation(p, "u_detail"), L.detail);
+    glUniform1f(glGetUniformLocation(p, "u_n"), (float)PLATE_N);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_bake_fbo);
+    glViewport(0, 0, PLATE_N, PLATE_N);
+    glDisable(GL_BLEND);
+    glBindBuffer(GL_ARRAY_BUFFER, g_bake_vbo);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void *)0);
+    glEnableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    for (int f = 0; f < 6; f++) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + f,
+                               g_plate_tex, 0);
+        glUniform3fv(glGetUniformLocation(p, "u_fc"), 1, FACE[f]);
+        glUniform3fv(glGetUniformLocation(p, "u_fu"), 1, FACE[f] + 3);
+        glUniform3fv(glGetUniformLocation(p, "u_fv"), 1, FACE[f] + 6);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glFinish();
+    memcpy(g_plate_key, key, sizeof key);
+    printf("Death Star: hull plating baked in %u ms\n", (unsigned)(SDL_GetTicks() - t0));
+    fflush(stdout);
+}
+
 /* ---------------------------------------------------------------- */
 static void init(void)
 {
     dome_points_init(&g_pts, 200000);
-    g_prog = dome_surface_program(HULL_GLSL);
+    {
+        char *src = malloc(sizeof HULL_HEAD + sizeof HULL_MAIN);
+        sprintf(src, "%s%s", HULL_HEAD, HULL_MAIN);
+        g_prog = dome_surface_program(src);
+        free(src);
+        size_t n = sizeof BAKE_TOP + sizeof HULL_HEAD + sizeof BAKE_MAIN + sizeof HULL_PLATE + sizeof BAKE_END;
+        src = malloc(n);
+        snprintf(src, n, "%s%s%s%s%s", BAKE_TOP, HULL_HEAD, BAKE_MAIN, HULL_PLATE, BAKE_END);
+        g_bake_prog = dome_compile(BAKE_VS, src);
+        free(src);
+    }
     rebuild();
 }
 
@@ -505,7 +611,12 @@ static void draw(const DomeFrame *f0)
     int warm = !g_warm && hull_b > 0.0f;
     if ((hull_b > 0.0f && hull_k > 0.0f) || warm) {
         g_warm = 1;
+        hull_bake();
         dome_surface_begin(g_prog, f);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, g_plate_tex);
+        glUniform1i(glGetUniformLocation(g_prog, "u_plate"), 1);
+        glActiveTexture(GL_TEXTURE0);
         glUniform3fv(glGetUniformLocation(g_prog, "u_dish"), 1, g_dish);
         glUniform1f(glGetUniformLocation(g_prog, "u_dish_ang"), asinf(DISH_R));
         glUniform1f(glGetUniformLocation(g_prog, "u_dish_dep"), L.dish_dep);
