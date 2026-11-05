@@ -125,6 +125,7 @@ static const char COPPER[] =
 /* ---- 2: rotozoomer: a made-up pixel tile, turning and zooming, with
  * its colours cycling through the 16-colour palette ---- */
 static const char ROTO[] =
+    "uniform vec4 u_roto;\n"                                       /* turn and zoom (cos, sin) * z, then the drift */
     "float tile(vec2 t){\n"                                         /* one 16x16 tile, made up */
     "  vec2 c = floor(fract(t) * 16.0) - 7.5;\n"
     "  float d = abs(c.x) + abs(c.y);\n"                            /* a diamond gem */
@@ -137,10 +138,7 @@ static const char ROTO[] =
     "}\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec2 p = plane(view), q = pix(p);\n"
-    "  float a = u_t * 0.35 + 0.8 * sin(u_t * 0.13);\n"
-    "  float z = 1.6 + 1.25 * sin(u_t * 0.41);\n"                   /* zoom in and out */
-    "  mat2 R = mat2(cos(a), sin(a), -sin(a), cos(a));\n"
-    "  vec2 t = R * q * z + vec2(u_t * 0.37, u_t * 0.21);\n"
+    "  vec2 t = mat2(u_roto.x, u_roto.y, -u_roto.y, u_roto.x) * q + u_roto.zw;\n"
     "  float k = tile(t);\n"
     "  float i = k < 1.5 ? 0.0 : k > 7.5 && k < 8.5 ? 8.0 : mod(k + floor(u_t * 6.0), 15.0) + 1.0;\n"
     "  vec3 c = pal16(i);\n"
@@ -2669,6 +2667,10 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     glUniform1f(glGetUniformLocation(p, "u_grid"), floorf(L.grid + 0.5f));
     if (s == 3) maze_uniforms(p);
+    if (s == 2) {   /* the rotozoomer's turn and zoom, the same for every pixel */
+        float a = g_t * 0.35f + 0.8f * sinf(g_t * 0.13f), z = 1.6f + 1.25f * sinf(g_t * 0.41f);
+        glUniform4f(glGetUniformLocation(p, "u_roto"), cosf(a) * z, sinf(a) * z, g_t * 0.37f, g_t * 0.21f);
+    }
     if (!g_pal_tex) {
         glGenTextures(1, &g_pal_tex);
         glBindTexture(GL_TEXTURE_2D, g_pal_tex);
