@@ -322,39 +322,31 @@ static const char MEGA[] =
     "uniform vec3 u_axis;\n"
     "uniform float u_turn, u_glow, u_tf;\n"         /* u_tf: the face turning, -1 none */
     "uniform sampler2D u_mid, u_mdist, u_mcol, u_mlayer;\n"
-    "vec3 sticker(float i){\n"
-    "  if (i < 0.5) return vec3(0.92, 0.92, 0.88);\n"
-    "  if (i < 1.5) return vec3(1.00, 0.82, 0.00);\n"
-    "  if (i < 2.5) return vec3(0.80, 0.05, 0.07);\n"
-    "  if (i < 3.5) return vec3(1.00, 0.45, 0.00);\n"
-    "  if (i < 4.5) return vec3(0.00, 0.22, 0.70);\n"
-    "  if (i < 5.5) return vec3(0.00, 0.55, 0.20);\n"
-    "  if (i < 6.5) return vec3(0.45, 0.15, 0.65);\n"     /* purple      */
-    "  if (i < 7.5) return vec3(1.00, 0.55, 0.70);\n"     /* pink        */
-    "  if (i < 8.5) return vec3(0.55, 0.85, 0.20);\n"     /* lime        */
-    "  if (i < 9.5) return vec3(0.35, 0.75, 1.00);\n"     /* light blue  */
-    "  if (i < 10.5) return vec3(0.95, 0.85, 0.60);\n"    /* cream       */
-    "  return vec3(0.45, 0.45, 0.48);\n"                  /* grey        */
-    "}\n"
+    "uniform sampler2D u_stk;\n"                  /* MEGA_STK below */
+    "uniform vec2 u_tcs;\n"                        /* cos and sin of -u_turn */
+    "uniform float u_pulse;\n"                     /* 0.5 + 0.5 sin(t * 6) */
+    "vec3 sticker(float i){ return texture2D(u_stk, vec2((i + 0.5) / 12.0, 0.5)).rgb; }\n"
     "vec2 eq(vec3 d){ return vec2(atan(d.x, d.z) / (2.0 * PI) + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI); }\n"
-    "float sid(vec3 d){ return floor(texture2D(u_mid, eq(d)).r * 255.0 + 0.5); }\n"
+    "float sid(vec2 uv){ return floor(texture2D(u_mid, uv).r * 255.0 + 0.5); }\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec3 d = ball(dir);\n"
+    "  vec2 uv = eq(d);\n"                            /* once, and again only if turned */
     "  if (u_tf > -0.5) {\n"                          /* in the turning layer? */
-    "    float s0 = sid(d);\n"
+    "    float s0 = sid(uv);\n"
     "    if (texture2D(u_mlayer, vec2((s0 + 0.5) / 132.0, (u_tf + 0.5) / 12.0)).r > 0.5) {\n"
-    "      float c = cos(-u_turn), s = sin(-u_turn);\n"
+    "      float c = u_tcs.x, s = u_tcs.y;\n"
     "      d = d * c + cross(u_axis, d) * s + u_axis * dot(u_axis, d) * (1.0 - c);\n"
+    "      uv = eq(d);\n"
     "    }\n"
     "  }\n"
-    "  float st = sid(d);\n"
+    "  float st = sid(uv);\n"
     "  float v = texture2D(u_mcol, vec2((st + 0.5) / 132.0, 0.5)).r * 255.0 / 20.0;\n"
-    "  float sd = texture2D(u_mdist, eq(d)).r * 0.08 - 0.011;\n"
+    "  float sd = texture2D(u_mdist, uv).r * 0.08 - 0.011;\n"
     "  vec3 c = sticker(floor(v + 0.5)) * (0.97 + 0.03 * h3(floor(d * 400.0)));\n"
     "  c *= 0.82 + 0.18 * smoothstep(0.0, 0.025, sd);\n"
     "  vec3 plastic = vec3(0.025, 0.025, 0.03);\n"
     "  vec3 col = mix(lit(plastic, view, 18.0, 0.25), lit(c, view, 70.0, 0.75), smoothstep(0.0, 0.005, sd));\n"
-    "  col *= 1.0 + u_glow * 0.18 * (0.5 + 0.5 * sin(u_t * 6.0));\n"
+    "  col *= 1.0 + u_glow * 0.18 * u_pulse;\n"
     "  return vec4(col * u_bright, 1.0);\n"
     "}\n";
 
