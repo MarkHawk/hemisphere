@@ -312,7 +312,9 @@ static void geodesic(DomePoints *p, int freq, float radius, float r, float g, fl
                                 float l = sqrtf(x * x + y * y + z * z) / radius;
                                 P[q][0] = x / l; P[q][1] = y / l; P[q][2] = z / l;
                             }
-                            dome_points_line(p, P[0], P[1], r, g, b, 1.0f, 0.006f);
+                            /* dots 0.008 apart: still a solid line at 3 pixels a
+                             * dot, and few enough for the Pi 3 to hold 60 fps */
+                            dome_points_line(p, P[0], P[1], r, g, b, 1.0f, 0.008f);
                         }
                     }
             }
