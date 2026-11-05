@@ -2689,6 +2689,7 @@ static void draw(const DomeFrame *f)
     for (int c = 0; c < 3; c++)
         for (int r = 0; r < 3; r++) cam[c * 3 + r] = A.cam[r * 3 + c];
     if (s == 5) memcpy(ff.rot, cam, sizeof cam);
+    if (s == 3) dome_surface_res(512.0f);      /* the maze is too slow at 640 on a Pi 3 */
     dome_surface_begin(p, &ff);
     glUniform1f(glGetUniformLocation(p, "u_t"), g_t);
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
