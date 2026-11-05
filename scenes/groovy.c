@@ -90,10 +90,17 @@ static const char LIQUID[] =
     "              sin(p.z * 2.1 - t * 0.8) + sin(p.x * 1.9 + t * 0.6),\n"
     "              sin(p.x * 2.5 + t * 0.9) + sin(p.y * 1.6 - t * 0.5));\n"
     "}\n"
+    /* the first warp, wv(dir * 1.8 * scale, t), from liquid_bake(): the
+     * sin and cos of each wave's space part are in three cube maps, and
+     * the time part's sin and cos are uniforms, so each wave is a dot */
+    "uniform samplerCube u_w0, u_w1, u_w2;\n"
+    "uniform vec4 u_q0, u_q1, u_q2;\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  float t = u_t * 0.35;\n"
     "  vec3 p = dir * 1.8 * u_scale;\n"
-    "  p += wv(p, t) * 0.45;\n"
+    "  p += vec3(dot(textureCube(u_w0, dir) * 2.0 - 1.0, u_q0),\n"
+    "            dot(textureCube(u_w1, dir) * 2.0 - 1.0, u_q1),\n"
+    "            dot(textureCube(u_w2, dir) * 2.0 - 1.0, u_q2)) * 0.45;\n"
     "  p += wv(p * 1.3, -t * 1.2) * 0.30;\n"
     "  float f = 0.5 + 0.25 * (sin(p.x * 1.6 + p.y) + sin(p.z * 1.8 - p.x * 0.7));\n"
     "  float g = 0.5 + 0.25 * (sin(p.y * 2.2 - p.z) + sin(p.x * 2.6 + t));\n"
@@ -434,6 +441,76 @@ static void lava_blobs(GLuint p)
     glUniform4fv(glGetUniformLocation(p, "u_blob"), LAVA_BLOBS, b);
 }
 
+/* liquid light's first warp, baked. Its six waves are sin(a * x + b * t)
+ * with x one of p's coordinates (p = dir * 1.8 * scale); that is
+ * sin(a x) cos(b t) + cos(a x) sin(b t). The sin and cos of a x depend
+ * only on the direction, so they go into three cube maps (two waves
+ * each, 0.5 + 0.5 v), made again when scale changes; the time half is
+ * worked out once a frame. */
+#define LIQ_N 256
+static const float LIQ_A[6] = { 2.3f, 1.7f, 2.1f, 1.9f, 2.5f, 1.6f };
+static const float LIQ_B[6] = { 1.0f, -0.7f, -0.8f, 0.6f, 0.9f, -0.5f };
+static const int   LIQ_C[6] = { 1, 2, 2, 0, 0, 1 };        /* which of x, y, z */
+static GLuint g_liq_tex[3];
+static float  g_liq_scale = -1.0f;
+
+static void liquid_bake(void)
+{
+    if (!g_liq_tex[0]) glGenTextures(3, g_liq_tex);
+    unsigned char *px = malloc((size_t)LIQ_N * LIQ_N * 4);
+    float k = 1.8f * L.scale;
+    for (int m = 0; m < 3; m++) {
+        glBindTexture(GL_TEXTURE_CUBE_MAP, g_liq_tex[m]);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        for (int face = 0; face < 6; face++) {
+            for (int j = 0; j < LIQ_N; j++)
+                for (int i = 0; i < LIQ_N; i++) {
+                    float u = 2.0f * (i + 0.5f) / LIQ_N - 1.0f, v = 2.0f * (j + 0.5f) / LIQ_N - 1.0f, d[3];
+                    switch (face) {      /* the GL cube map faces: +x -x +y -y +z -z */
+                    case 0: d[0] = 1;  d[1] = -v; d[2] = -u; break;
+                    case 1: d[0] = -1; d[1] = -v; d[2] = u;  break;
+                    case 2: d[0] = u;  d[1] = 1;  d[2] = v;  break;
+                    case 3: d[0] = u;  d[1] = -1; d[2] = -v; break;
+                    case 4: d[0] = u;  d[1] = -v; d[2] = 1;  break;
+                    default: d[0] = -u; d[1] = -v; d[2] = -1; break;
+                    }
+                    float l = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+                    unsigned char *o = px + ((size_t)j * LIQ_N + i) * 4;
+                    for (int w = 0; w < 2; w++) {
+                        int n = m * 2 + w;
+                        float x = LIQ_A[n] * k * d[LIQ_C[n]] / l;
+                        o[w * 2]     = (unsigned char)lroundf((0.5f + 0.5f * sinf(x)) * 255.0f);
+                        o[w * 2 + 1] = (unsigned char)lroundf((0.5f + 0.5f * cosf(x)) * 255.0f);
+                    }
+                }
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGBA, LIQ_N, LIQ_N, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, px);
+        }
+    }
+    free(px);
+    g_liq_scale = L.scale;
+}
+
+static void liquid_uniforms(GLuint p)
+{
+    if (g_liq_scale != L.scale) liquid_bake();
+    float t = g_t * 0.35f, q[12];
+    for (int n = 0; n < 6; n++) {
+        q[n * 2] = cosf(LIQ_B[n] * t); q[n * 2 + 1] = sinf(LIQ_B[n] * t);
+    }
+    static const char *QN[3] = { "u_q0", "u_q1", "u_q2" }, *WN[3] = { "u_w0", "u_w1", "u_w2" };
+    for (int m = 0; m < 3; m++) {
+        glUniform4fv(glGetUniformLocation(p, QN[m]), 1, q + m * 4);
+        glActiveTexture(GL_TEXTURE1 + m);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, g_liq_tex[m]);
+        glUniform1i(glGetUniformLocation(p, WN[m]), 1 + m);
+    }
+    glActiveTexture(GL_TEXTURE0);
+}
+
 /* paisley's four inks: mustard, red, teal, rose, in a strip that wraps
  * (a lookup is much quicker on the Pi than ifs) */
 static const unsigned char INKS[4][4] = {
@@ -501,6 +578,7 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     if (s == 3) lava_blobs(p);
+    if (s == 4) liquid_uniforms(p);
     if (s == 5) tiedye_folds(p);
     if (s == 6) {
         if (!g_ink_tex) {
