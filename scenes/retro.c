@@ -155,6 +155,10 @@ static const char ROTO[] =
 static const char MAZE[] =
     "uniform sampler2D u_mwall, u_mdots;\n"
     "uniform vec4 u_hero, u_c0, u_c1, u_c2, u_c3, u_fruit, u_mz, u_gl;\n"
+    /* worked out once a frame on the CPU: the wall colour, sin(t * 4),
+     * sin(t * 12), and the planet level's axes */
+    "uniform vec3 u_wc, u_gup, u_gea, u_gno;\n"
+    "uniform vec2 u_wave;\n"
     "vec2 mwrap(vec2 q){ q.x = mod(q.x + 13.5, 27.0) - 13.5; return q; }\n"
     "vec3 robot(vec2 q, float dir, float sc, float death, inout float a){\n"
     "  q /= sc;\n"
@@ -167,7 +171,7 @@ static const char MAZE[] =
     "  if (r < rad) {\n"
     "    c = mix(vec3(0.75, 0.95, 1.0), vec3(0.15, 0.55, 0.85), smoothstep(0.0, rad, length(q - vec2(-0.12, -0.12))));\n"
     "    if (abs(f.y) < 0.09 && f.x > 0.05) c = vec3(0.05, 0.1, 0.2);\n"                      /* the visor */
-    "    if (length(f - vec2(0.24, 0.0)) < 0.06) c = vec3(1.0, 0.35, 0.2) * (0.7 + 0.3 * sin(u_t * 12.0));\n"
+    "    if (length(f - vec2(0.24, 0.0)) < 0.06) c = vec3(1.0, 0.35, 0.2) * (0.7 + 0.3 * u_wave.y);\n"
     "    a = 1.0;\n"
     "  }\n"
     "  vec2 ant = vec2(-0.30, 0.32) * (1.0 - death);\n"                                        /* two little aerials */
@@ -182,18 +186,16 @@ static const char MAZE[] =
     "  vec3 c = vec3(0.0);\n"
     "  if (s.w < 2.5 && r < rr) {\n"
     "    vec3 body = s.w < 0.5 ? col : vec3(0.15, 0.2, 0.95);\n"
-    "    if (s.w > 1.5) body = mix(body, vec3(0.95), 0.5 + 0.5 * sin(u_t * 12.0));\n"
+    "    if (s.w > 1.5) body = mix(body, vec3(0.95), 0.5 + 0.5 * u_wave.y);\n"
     "    c = body * (0.65 + 0.35 * smoothstep(rr, 0.0, r)); a = 1.0;\n"
     "  }\n"
     "  vec2 look = s.w < 0.5 || s.w > 2.5 ? vec2(cos(s.z * 1.5708), sin(s.z * 1.5708)) * 0.05 : vec2(0.0);\n"
-    "  for (int k = 0; k < 2; k++) {\n"
-    "    vec2 e = vec2(k == 0 ? -0.12 : 0.12, -0.06);\n"
-    "    if (length(q - e) < 0.09) { c = vec3(1.0); a = 1.0; }\n"
-    "    if (length(q - e - look) < 0.045) { c = s.w > 0.5 && s.w < 2.5 ? vec3(1.0, 0.6, 0.6) : vec3(0.05, 0.05, 0.3); a = 1.0; }\n"
-    "  }\n"
+    /* the eye on this side: the two are too far apart to overlap */
+    "  vec2 e = vec2(q.x < 0.0 ? -0.12 : 0.12, -0.06);\n"
+    "  if (length(q - e) < 0.09) { c = vec3(1.0); a = 1.0; }\n"
+    "  if (length(q - e - look) < 0.045) { c = s.w > 0.5 && s.w < 2.5 ? vec3(1.0, 0.6, 0.6) : vec3(0.05, 0.05, 0.3); a = 1.0; }\n"
     "  return c;\n"
     "}\n"
-    "vec3 lvlcol(float l){ return 0.5 + 0.5 * cos(6.2832 * (l * 0.17 + vec3(0.55, 0.75, 0.95))); }\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec2 p = view.xy;\n"
     "  float R = u_mz.x;\n"
@@ -204,11 +206,7 @@ static const char MAZE[] =
     "  vec2 m = u_hero.xy + vec2(p.x, -p.y) * R;\n"
     "  float onmaze = 1.0;\n"
     "  if (u_gl.x > 0.5) {\n"                       /* the planet level: the maze on a globe */
-    "    float la = u_gl.y, lo = u_gl.z;\n"
-    "    vec3 up = vec3(cos(la) * sin(lo), sin(la), cos(la) * cos(lo));\n"
-    "    vec3 ea = vec3(cos(lo), 0.0, -sin(lo));\n"
-    "    vec3 no = cross(up, ea);\n"
-    "    vec3 e = normalize(ea * view.x + no * view.y + up * view.z);\n"
+    "    vec3 e = normalize(u_gea * view.x + u_gno * view.y + u_gup * view.z);\n"
     "    float lat = asin(clamp(e.y, -1.0, 1.0)), lon = atan(e.x, e.z);\n"
     "    m = vec2(13.0 + lon / u_gl.w, 11.5 - lat / u_gl.w);\n"
     "    onmaze = step(-0.5, m.x) * step(m.x, 26.5);\n"
@@ -221,13 +219,13 @@ static const char MAZE[] =
     "    vec2 w = vec2(mod(m.x + 0.5, 27.0) - 0.5, m.y);\n"
     "    if (u_gl.x > 0.5) c = mix(c, vec3(0.0, 0.0, 0.04), 0.85);\n"
     "    float f = texture2D(u_mwall, (w + 0.5) / 32.0).r;\n"
-    "    vec3 wc = lvlcol(u_mz.y);\n"
+    "    vec3 wc = u_wc;\n"
     "    c = mix(c, wc * 0.07, smoothstep(0.45, 0.6, f));\n"
     "    c += wc * (1.0 - smoothstep(0.0, 0.07, abs(f - 0.5))) * 1.1;\n"
     "    vec2 cell = floor(w + 0.5), q = w - cell;\n"
     "    float d = texture2D(u_mdots, (cell + 0.5) / 32.0).r;\n"
     "    if (d > 0.3 && d < 0.7 && length(q) < 0.1) c = vec3(1.0, 0.9, 0.75);\n"
-    "    if (d > 0.7 && length(q) < 0.26) c = vec3(1.0, 1.0, 0.6) * (0.85 + 0.15 * sin(u_t * 4.0));\n"
+    "    if (d > 0.7 && length(q) < 0.26) c = vec3(1.0, 1.0, 0.6) * (0.85 + 0.15 * u_wave.x);\n"
     "    if (abs(cell.y - 11.0) < 0.5 && abs(cell.x - 13.0) < 0.5 && abs(q.y) < 0.08) c = vec3(1.0, 0.6, 0.8);\n"   /* the gate */
     "  }\n"
     "  if (u_fruit.w > 0.5) {\n"
@@ -242,11 +240,30 @@ static const char MAZE[] =
     "  }\n"
     "  a = 0.0;\n"
     "  vec3 k;\n"
-    "  k = chaser(mwrap(m - u_c0.xy), u_c0, vec3(1.0, 0.22, 0.22), a); if (a > 0.0) { c = k; a = 0.0; }\n"
-    "  k = chaser(mwrap(m - u_c1.xy), u_c1, vec3(1.0, 0.35, 0.95), a); if (a > 0.0) { c = k; a = 0.0; }\n"
-    "  k = chaser(mwrap(m - u_c2.xy), u_c2, vec3(0.35, 1.0, 0.45), a); if (a > 0.0) { c = k; a = 0.0; }\n"
-    "  k = chaser(mwrap(m - u_c3.xy), u_c3, vec3(1.0, 0.6, 0.15), a); if (a > 0.0) { c = k; a = 0.0; }\n"
-    "  if (u_mz.w < 0.99) { k = robot(mwrap(m - u_hero.xy), u_hero.z, 1.0, u_mz.w, a); if (a > 0.0) c = k; }\n"
+    "  vec2 q;\n"
+    /* the chasers, later ones on top: find the top two in reach of this
+     * pixel (by number, so little is held on to) and draw only those,
+     * which keeps the shader small enough for the Pi to run it quickly */
+    "  float i1 = -1.0, i2 = -1.0;\n"
+    "  q = mwrap(m - u_c0.xy);\n"
+    "  if (dot(q, q) < 0.36 && u_c0.w < 3.5) { i2 = i1; i1 = 0.0; }\n"
+    "  q = mwrap(m - u_c1.xy);\n"
+    "  if (dot(q, q) < 0.36 && u_c1.w < 3.5) { i2 = i1; i1 = 1.0; }\n"
+    "  q = mwrap(m - u_c2.xy);\n"
+    "  if (dot(q, q) < 0.36 && u_c2.w < 3.5) { i2 = i1; i1 = 2.0; }\n"
+    "  q = mwrap(m - u_c3.xy);\n"
+    "  if (dot(q, q) < 0.36 && u_c3.w < 3.5) { i2 = i1; i1 = 3.0; }\n"
+    "  for (int j = 0; j < 2; j++) {\n"
+    "    float i = j == 0 ? i1 : i2;\n"
+    "    if (i < -0.5) break;\n"
+    "    vec4 s = i < 0.5 ? u_c0 : i < 1.5 ? u_c1 : i < 2.5 ? u_c2 : u_c3;\n"
+    "    vec3 kc = i < 0.5 ? vec3(1.0, 0.22, 0.22) : i < 1.5 ? vec3(1.0, 0.35, 0.95)\n"
+    "            : i < 2.5 ? vec3(0.35, 1.0, 0.45) : vec3(1.0, 0.6, 0.15);\n"
+    "    k = chaser(mwrap(m - s.xy), s, kc, a);\n"
+    "    if (a > 0.0) { c = k; a = 0.0; break; }\n"
+    "  }\n"
+    "  q = mwrap(m - u_hero.xy);\n"
+    "  if (u_mz.w < 0.99 && dot(q, q) < 0.4761) { k = robot(q, u_hero.z, 1.0, u_mz.w, a); if (a > 0.0) c = k; }\n"
     "  return vec4(c * u_bright, 1.0);\n"
     "}\n";
 
@@ -1317,6 +1334,17 @@ static void maze_uniforms(GLuint p)
     M.glat += (tl - M.glat) * 0.08f;
     M.glon += (to - M.glon) * 0.08f;
     glUniform4f(glGetUniformLocation(p, "u_gl"), M.level == 5 ? 1.0f : 0.0f, M.glat, M.glon, TILE);
+    float la = M.glat, lo = M.glon;
+    float up[3] = { cosf(la) * sinf(lo), sinf(la), cosf(la) * cosf(lo) };
+    float ea[3] = { cosf(lo), 0.0f, -sinf(lo) };
+    float no[3] = { up[1] * ea[2] - up[2] * ea[1], up[2] * ea[0] - up[0] * ea[2], up[0] * ea[1] - up[1] * ea[0] };
+    glUniform3fv(glGetUniformLocation(p, "u_gup"), 1, up);
+    glUniform3fv(glGetUniformLocation(p, "u_gea"), 1, ea);
+    glUniform3fv(glGetUniformLocation(p, "u_gno"), 1, no);
+    float l = (float)M.level, wc[3];
+    for (int i = 0; i < 3; i++) wc[i] = 0.5f + 0.5f * cosf(6.2832f * (l * 0.17f + 0.55f + 0.2f * i));
+    glUniform3fv(glGetUniformLocation(p, "u_wc"), 1, wc);
+    glUniform2f(glGetUniformLocation(p, "u_wave"), sinf(g_t * 4.0f), sinf(g_t * 12.0f));
 }
 
 static void maze_draw(void)
