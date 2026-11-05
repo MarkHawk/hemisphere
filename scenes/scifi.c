@@ -406,6 +406,7 @@ static void draw(const DomeFrame *f)
     if (s == 5) { ua = 0.55f + 0.35f * sinf(g_t * 0.4f); ub = 0.5f + 0.4f * sinf(g_t * 0.27f + 1.0f); }
     if (s == 0) ub = 0.88f + 0.12f * (0.5f + 0.5f * sinf(g_t * 37.0f) * sinf(g_t * 23.0f + 1.0f));
 
+    if (s == 1) dome_surface_res(512.0f);      /* too slow at 640 on a Pi 3 */
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), ut);
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
