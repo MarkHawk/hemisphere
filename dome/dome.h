@@ -183,6 +183,11 @@ void dome_surface_res(float res);
  * since, or the screen changed), and then draw it as usual. The scene
  * must itself check that what it would draw has not changed. */
 int dome_surface_again(const DomeFrame *f);
+/* ask for this frame to be shown at half the screen's rate (30 fps on a
+ * 60 Hz screen): for a style that cannot hold 60 but can hold a steady
+ * 30, which looks smoother than an uneven 40. Call it each frame; every
+ * new frame goes back to full rate. */
+void dome_half_rate(void);
 void dome_surface_end(void);
 
 /* ---- sound ------------------------------------------------------- */

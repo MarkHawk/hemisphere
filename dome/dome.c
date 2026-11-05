@@ -503,6 +503,7 @@ static Surf   g_surf[N_SURF];
 static int    g_surf_gen = 1;        /* bumped when the screen size changes */
 static float  g_want_res;            /* this frame's dome_surface_res(), 0 = shared */
 static Surf  *g_last_surf;           /* the surface dome_surface_begin last drew into */
+static int    g_want_half;           /* this frame's dome_half_rate() */
 static GLuint g_cur_surface;
 
 static float lens_c(float phi) { return atan2f(sinf(phi), cosf(phi) + g_cal.offset); }
@@ -632,6 +633,7 @@ static void surface_pick(void)
 }
 
 void dome_surface_res(float res) { g_want_res = res; }
+void dome_half_rate(void) { g_want_half = 1; }
 
 static void tex_params(GLuint t, GLint filter)
 {
@@ -1974,6 +1976,7 @@ int dome_run(int argc, char **argv, const char *title,
         /* each frame starts on the shared res; dome_surface_begin builds
          * the lens lookup again if calibration or res has changed */
         g_want_res = 0.0f;
+        g_want_half = 0;
 
         DomeFrame f;
         f.now = now; f.dt = dt; f.spin = spin;
@@ -2023,7 +2026,22 @@ int dome_run(int argc, char **argv, const char *title,
             }
         }
 
-        SDL_GL_SwapWindow(win);
+        {   /* a scene that asked for half rate: hold each frame until
+             * 1/30 s after the last (the Pi's compositor does not wait
+             * for the refresh, and ignores a swap interval of 2) */
+            static Uint64 last_swap;
+            if (g_want_half && last_swap) {
+                Uint64 hz = SDL_GetPerformanceFrequency(), due = last_swap + hz / 30;
+                Uint64 now_c = SDL_GetPerformanceCounter();
+                if (now_c + hz / 500 < due) SDL_Delay((Uint32)((due - now_c) * 1000 / hz) - 1);
+                while (SDL_GetPerformanceCounter() < due) {}
+            }
+            SDL_GL_SwapWindow(win);
+            Uint64 now_c = SDL_GetPerformanceCounter(), hz = SDL_GetPerformanceFrequency();
+            /* keep the beat steady: step on from when it was due, unless far behind */
+            last_swap = g_want_half && last_swap && now_c - last_swap < hz / 15 ? last_swap + hz / 30 : now_c;
+            if (last_swap > now_c) last_swap = now_c;
+        }
 
         frames++;
         frames2++;
