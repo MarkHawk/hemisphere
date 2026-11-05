@@ -234,7 +234,8 @@ static const char BOWLING[] =
     "  vec3 c = mix(vec3(0.10, 0.02, 0.25), vec3(0.15, 0.25, 0.75), smoothstep(0.3, 0.8, sw));\n"
     "  c = mix(c, vec3(0.75, 0.55, 0.95), smoothstep(0.85, 0.98, sw) * 0.5);\n"
     "  vec3 h1 = normalize(vec3(-0.17, 0.12, 1.0)), h2 = normalize(vec3(0.17, 0.12, 1.0)), h3v = normalize(vec3(0.0, -0.22, 1.0));\n"
-    "  float hole = min(min(acos(clamp(dot(d, h1), -1.0, 1.0)), acos(clamp(dot(d, h2), -1.0, 1.0))),\n"
+    /* the nearer of the two top holes is the one with the larger dot */
+    "  float hole = min(acos(clamp(max(dot(d, h1), dot(d, h2)), -1.0, 1.0)),\n"
     "                   acos(clamp(dot(d, h3v), -1.0, 1.0)) * 0.8);\n"
     "  c = mix(c, vec3(0.0), smoothstep(0.07, 0.06, hole));\n"
     "  c *= 1.0 - 0.4 * smoothstep(0.085, 0.07, hole) * smoothstep(0.06, 0.07, hole);\n"
