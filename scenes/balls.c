@@ -75,25 +75,15 @@ static const char LIB[] =
 
 /* ---- 0: football ---- */
 static const char FOOTBALL[] =
-    "void face(vec3 d, vec3 n, float w, float p, inout float b1, inout float b2, inout float isP){\n"
-    "  float v = dot(d, normalize(n)) / w;\n"
+    "uniform vec4 u_face[32];\n"                   /* normal / face distance, then 1 pentagon or 0 */
+    "void face(vec3 d, vec4 n, inout float b1, inout float b2, inout float isP){\n"
+    "  float v = dot(d, n.xyz), p = n.w;\n"
     "  if (v > b1) { b2 = b1; b1 = v; isP = p; } else if (v > b2) b2 = v;\n"
     "}\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec3 d = ball(dir);\n"
     "  float b1 = -9.0, b2 = -9.0, isP = 0.0;\n"
-    "  const float WP = 2.32744, WH = 2.26728;\n"                   /* face distances */
-    "  for (int i = 0; i < 4; i++) {\n"
-    "    float s1 = mod(float(i), 2.0) < 0.5 ? 1.0 : -1.0, s2 = i < 2 ? 1.0 : -1.0;\n"
-    "    face(d, vec3(0.0, s1, s2 * PHI), WP, 1.0, b1, b2, isP);\n"
-    "    face(d, vec3(s1, s2 * PHI, 0.0), WP, 1.0, b1, b2, isP);\n"
-    "    face(d, vec3(s2 * PHI, 0.0, s1), WP, 1.0, b1, b2, isP);\n"
-    "    face(d, vec3(0.0, s1 * PHI, s2 / PHI), WH, 0.0, b1, b2, isP);\n"    /* hexagons sit on the */
-    "    face(d, vec3(s1 * PHI, s2 / PHI, 0.0), WH, 0.0, b1, b2, isP);\n"    /* icosahedron's faces */
-    "    face(d, vec3(s2 / PHI, 0.0, s1 * PHI), WH, 0.0, b1, b2, isP);\n"
-    "    face(d, vec3(s1, s2, 1.0), WH, 0.0, b1, b2, isP);\n"
-    "    face(d, vec3(s1, s2, -1.0), WH, 0.0, b1, b2, isP);\n"
-    "  }\n"
+    "  for (int i = 0; i < 32; i++) face(d, u_face[i], b1, b2, isP);\n"
     "  vec3 c = isP > 0.5 ? vec3(0.06) : vec3(0.94);\n"
     "  float e = (b1 - b2) / b1;\n"
     "  c *= 0.35 + 0.65 * smoothstep(0.002, 0.008, e);\n"           /* stitched seams */
@@ -740,6 +730,29 @@ static void update(const DomeFrame *f)
     if (style() == 11) puzzle_step(&g_pz[1], dt);
 }
 
+/* the football's 32 faces (football_faces()): each normal divided by its
+ * face distance, and 1 for a pentagon. The 12 pentagons sit on an
+ * icosahedron's corners, the 20 hexagons on its faces. */
+static float g_face[32][4];
+static void football_faces(void)
+{
+    const float PHI = 1.6180340f, WP = 2.32744f, WH = 2.26728f;
+    int k = 0;
+    for (int i = 0; i < 4; i++) {
+        float s1 = i % 2 == 0 ? 1.0f : -1.0f, s2 = i < 2 ? 1.0f : -1.0f;
+        float n[8][4] = {
+            { 0, s1, s2 * PHI, 1 }, { s1, s2 * PHI, 0, 1 }, { s2 * PHI, 0, s1, 1 },
+            { 0, s1 * PHI, s2 / PHI, 0 }, { s1 * PHI, s2 / PHI, 0, 0 }, { s2 / PHI, 0, s1 * PHI, 0 },
+            { s1, s2, 1, 0 }, { s1, s2, -1, 0 } };
+        for (int j = 0; j < 8; j++, k++) {
+            float l = sqrtf(n[j][0] * n[j][0] + n[j][1] * n[j][1] + n[j][2] * n[j][2]);
+            float w = n[j][3] > 0.5f ? WP : WH;
+            for (int c = 0; c < 3; c++) g_face[k][c] = n[j][c] / l / w;
+            g_face[k][3] = n[j][3];
+        }
+    }
+}
+
 static void draw(const DomeFrame *f)
 {
     GLuint p = g_prog[style()];
@@ -748,6 +761,10 @@ static void draw(const DomeFrame *f)
     glUniform2f(glGetUniformLocation(p, "u_rcs"), cosf(g_roll), sinf(g_roll));
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     glUniform1f(glGetUniformLocation(p, "u_shine"), L.shine);
+    if (style() == 0) {
+        if (g_face[0][3] == 0.0f) football_faces();
+        glUniform4fv(glGetUniformLocation(p, "u_face"), 32, g_face[0]);
+    }
     if (style() == 10) puzzle_uniforms(p, 0);
     if (style() == 11) puzzle_uniforms(p, 1);
     dome_surface_end();
