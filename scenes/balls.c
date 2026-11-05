@@ -250,12 +250,14 @@ static const char BOWLING[] =
 #define PUZZLE_LIB \
     "uniform vec3 u_axis;\n"                       /* turning: u_lo < dot(d, axis) <= u_hi */ \
     "uniform float u_lo, u_hi, u_turn, u_glow;\n" \
+    "uniform vec2 u_tcs;\n"                       /* cos and sin of -u_turn */ \
+    "uniform float u_pulse;\n"                    /* 0.5 + 0.5 sin(t * 6) */ \
     "vec3 turned(vec3 d, out float turning, out float seam){\n" \
     "  float x = dot(d, u_axis);\n" \
     "  turning = step(0.0001, abs(u_turn)) * step(u_lo, x) * step(x, u_hi);\n" \
     "  seam = step(0.0001, abs(u_turn)) > 0.5 ? min(abs(x - u_lo), abs(x - u_hi)) : 1.0;\n" \
     "  if (turning < 0.5) return d;\n" \
-    "  float c = cos(-u_turn), s = sin(-u_turn);\n" \
+    "  float c = u_tcs.x, s = u_tcs.y;\n" \
     "  return d * c + cross(u_axis, d) * s + u_axis * dot(u_axis, d) * (1.0 - c);\n" \
     "}\n" \
     "vec3 finish(vec3 c, float on, float edge, float seam, vec3 view){\n" \
@@ -263,7 +265,7 @@ static const char BOWLING[] =
     "  vec3 plastic = vec3(0.025, 0.025, 0.03);\n" \
     "  vec3 col = mix(lit(plastic, view, 18.0, 0.25), lit(c, view, 70.0, 0.75), on);\n" \
     "  col *= smoothstep(0.003, 0.014, seam);\n"                  /* the open slot */ \
-    "  return col * (1.0 + u_glow * 0.18 * (0.5 + 0.5 * sin(u_t * 6.0)));\n" \
+    "  return col * (1.0 + u_glow * 0.18 * u_pulse);\n" \
     "}\n"
 
 static const char CUBE[] =
@@ -271,14 +273,8 @@ static const char CUBE[] =
     "uniform sampler2D u_cube;\n"                  /* sticker colours, 6 x N x N in a row */
     "uniform float u_n;\n"                         /* layers each way */
     "uniform vec4 u_cut;\n"                        /* the N-1 cuts, lowest first */
-    "vec3 sticker(float i){\n"
-    "  if (i < 0.5) return vec3(0.92, 0.92, 0.88);\n"     /* white  */
-    "  if (i < 1.5) return vec3(1.00, 0.82, 0.00);\n"     /* yellow */
-    "  if (i < 2.5) return vec3(0.78, 0.04, 0.06);\n"     /* red    */
-    "  if (i < 3.5) return vec3(1.00, 0.40, 0.00);\n"     /* orange */
-    "  if (i < 4.5) return vec3(0.00, 0.25, 0.72);\n"     /* blue   */
-    "  return vec3(0.00, 0.58, 0.24);\n"                  /* green  */
-    "}\n"
+    "uniform sampler2D u_stk;\n"                  /* CUBE_STK below */
+    "vec3 sticker(float i){ return texture2D(u_stk, vec2((i + 0.5) / 6.0, 0.5)).rgb; }\n"
     "float cutk(float k){ return k < 0.5 ? u_cut.x : k < 1.5 ? u_cut.y : k < 2.5 ? u_cut.z : u_cut.w; }\n"
     "float band(float x){\n"
     "  float c = 0.0;\n"
@@ -669,6 +665,31 @@ static void puzzle_init(void)
     mega_maps(&g_pz[1]);
 }
 
+static const unsigned char CUBE_STK[6][4] = {
+    { 235, 235, 224, 255 },
+    { 255, 209,   0, 255 },
+    { 199,  10,  15, 255 },
+    { 255, 102,   0, 255 },
+    {   0,  64, 184, 255 },
+    {   0, 148,  61, 255 },
+};
+static const unsigned char MEGA_STK[12][4] = {
+    { 235, 235, 224, 255 },
+    { 255, 209,   0, 255 },
+    { 204,  13,  18, 255 },
+    { 255, 115,   0, 255 },
+    {   0,  56, 178, 255 },
+    {   0, 140,  51, 255 },
+    { 115,  38, 166, 255 },
+    { 255, 140, 178, 255 },
+    { 140, 217,  51, 255 },
+    {  89, 191, 255, 255 },
+    { 242, 217, 153, 255 },
+    { 115, 115, 122, 255 },
+};
+static GLuint g_stk_tex[2];
+static float  g_now;
+
 static void puzzle_uniforms(GLuint prog, int which)
 {
     Puzzle *p = &g_pz[which];
@@ -696,6 +717,23 @@ static void puzzle_uniforms(GLuint prog, int which)
     glUniform1f(glGetUniformLocation(prog, "u_lo"), lo);
     glUniform1f(glGetUniformLocation(prog, "u_hi"), hi);
     glUniform1f(glGetUniformLocation(prog, "u_glow"), p->phase == 3 ? 1.0f : 0.0f);
+    glUniform2f(glGetUniformLocation(prog, "u_tcs"), cosf(-ang), sinf(-ang));
+    glUniform1f(glGetUniformLocation(prog, "u_pulse"), 0.5f + 0.5f * sinf(g_now * 6.0f));
+    /* the sticker colours, in a strip (much quicker on the Pi than ifs) */
+    if (!g_stk_tex[which]) {
+        glGenTextures(1, &g_stk_tex[which]);
+        glBindTexture(GL_TEXTURE_2D, g_stk_tex[which]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, which ? 12 : 6, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                     which ? (const void *)MEGA_STK : (const void *)CUBE_STK);
+    }
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, g_stk_tex[which]);
+    glUniform1i(glGetUniformLocation(prog, "u_stk"), 5);
+    glActiveTexture(GL_TEXTURE0);
     if (which == 0) {
         glUniform1f(glGetUniformLocation(prog, "u_n"), (float)p->n);
         glUniform4f(glGetUniformLocation(prog, "u_cut"), p->cut[0], p->cut[1], p->cut[2], p->cut[3]);
@@ -757,6 +795,7 @@ static void football_faces(void)
 static void draw(const DomeFrame *f)
 {
     GLuint p = g_prog[style()];
+    g_now = f->now;
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), f->now);
     glUniform2f(glGetUniformLocation(p, "u_rcs"), cosf(g_roll), sinf(g_roll));
