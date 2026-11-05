@@ -92,6 +92,7 @@ static void draw(const DomeFrame *f)
     m3_rx(a, 0.21f * g_t);
     m3_rz(b, 0.13f * g_t);
     m3_mul(tw, a, b);
+    if (L.style < 0.5f) dome_surface_res(512.0f);   /* cube mirrors: too slow at 640 on a Pi 3 */
     dome_surface_begin(p, f);
     glUniformMatrix3fv(glGetUniformLocation(p, "u_twist"), 1, GL_FALSE, tw);
     glUniform1f(glGetUniformLocation(p, "u_style"), L.style);
