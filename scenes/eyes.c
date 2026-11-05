@@ -381,6 +381,7 @@ static const char EYE_GLSL[] =
     "uniform vec4 u_open;\n"                       /* half-width, top, bottom, roundness */
     "uniform vec4 u_misc;\n"                       /* blink 0 open .. 1 shut, lids on, shine, time */
     "uniform vec3 u_hl;\n"                         /* where the window's reflection sits */
+    "uniform vec4 u_k;\n"                          /* CPU: 1 / sin(iris angle), cos and sin of t * 0.12, sin(t * 4.3 + 1) */
     "vec2 flat2(vec3 v){ return v.xy / (1.0 + max(v.z, 0.0)); }\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  vec2 p = flat2(view);\n"
@@ -397,7 +398,7 @@ static const char EYE_GLSL[] =
     "  vec3 col;\n"
     "  float c = dot(view, u_gaze);\n"
     "  float th = acos(clamp(c, -1.0, 1.0));\n"
-    "  vec2 q = vec2(dot(view, u_e1), dot(view, u_e2)) / sin(u_shape.x);\n"   /* the iris, face on */
+    "  vec2 q = vec2(dot(view, u_e1), dot(view, u_e2)) * u_k.x;\n"   /* the iris, face on */
     "  float r = length(q);\n"
     "  if (inside > 0.5) {\n"
     /* the white of the eye */
@@ -415,7 +416,7 @@ static const char EYE_GLSL[] =
     "        float tr = mix(0.30, 1.0, clamp((rr - pr) / (1.0 - pr), 0.0, 1.0));\n"
     "        qi *= rr > pr ? tr / max(rr, 1e-4) : 0.0;\n"
     "      }\n"
-    "      if (fire > 0.5) { float a = t * 0.12; qi = mat2(cos(a), sin(a), -sin(a), cos(a)) * qi; }\n"
+    "      if (fire > 0.5) qi = mat2(u_k.y, u_k.z, -u_k.z, u_k.y) * qi;\n"
     "      vec4 ir = texture2D(u_iris, qi / 2.2 + 0.5);\n"
     "      vec3 ic = ir.rgb;\n"
     "      float pup;\n"
@@ -430,7 +431,7 @@ static const char EYE_GLSL[] =
     "      float edge = smoothstep(0.98, 1.1, r);\n"
     "      e = mix(ic, e * mix(0.6, 1.0, smoothstep(1.0, 1.12, r)), edge);\n"
     "      glow = mix(ir.a * pe, glow, edge);\n"
-    "      if (fire > 0.5) glow *= 0.85 + 0.15 * sin(t * 7.0 + r * 9.0) * sin(t * 4.3 + 1.0);\n"
+    "      if (fire > 0.5) glow *= 0.85 + 0.15 * sin(t * 7.0 + r * 9.0) * u_k.w;\n"
     "    }\n"
     /* light on the ball: from above left; the lids shade it near them */
     "    vec3 ld = normalize(vec3(-0.45, 0.55, 0.7));\n"
@@ -612,6 +613,8 @@ static void draw(const DomeFrame *f)
     glUniform4f(glGetUniformLocation(p, "u_shape"), e->iris, pupil, e->slit, s == 7 ? 1.0f : 0.0f);
     glUniform4f(glGetUniformLocation(p, "u_open"), e->w, e->up, e->lo, e->round);
     glUniform4f(glGetUniformLocation(p, "u_misc"), blink_amount(), L.lids > 0.5f ? 1.0f : 0.0f, L.shine, E.t);
+    glUniform4f(glGetUniformLocation(p, "u_k"), 1.0f / sinf(e->iris), cosf(E.t * 0.12f), sinf(E.t * 0.12f),
+                sinf(E.t * 4.3f + 1.0f));
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     dome_surface_end();
 
