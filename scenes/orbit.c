@@ -405,6 +405,7 @@ static void draw(const DomeFrame *f)
     GLuint p = g_prog;
     DomeFrame ff = *f;
     memcpy(ff.rot, rot, sizeof rot);
+    dome_surface_res(512.0f);                  /* just too slow at 640 on a Pi 3 */
     dome_surface_begin(p, &ff);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, g_day);
     glUniform1i(glGetUniformLocation(p, "u_day"), 1);
