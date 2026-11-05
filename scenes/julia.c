@@ -74,6 +74,7 @@ static void update(const DomeFrame *f) { g_phase += f->dt * 0.05f * L.speed; }
 static void draw(const DomeFrame *f)
 {
     GLuint p = g_prog;
+    dome_surface_res(512.0f);                  /* too slow at 640 on a Pi 3 */
     dome_surface_begin(p, f);
     /* main cardioid: c = e^ia / 2 - e^2ia / 4 */
     float cx = 0.5f * cosf(g_phase) - 0.25f * cosf(2.0f * g_phase);
