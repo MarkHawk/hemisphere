@@ -560,8 +560,8 @@ static const char HUD[] =
     "  }\n"
     /* status panels left and right (grid columns 0-13 and 14-27) */
     "  float cw = 0.026, ch = 0.04, tx = 0.0;\n"
-    "  if (fl.x < -0.52) tx = textcell(vec2((fl.x + 0.92) / cw, (0.42 - fl.y) / ch));\n"
-    "  if (fl.x > 0.52)  tx = textcell(vec2(14.0 + (fl.x - 0.55) / cw, (0.42 - fl.y) / ch));\n"
+    "  if (abs(fl.x) > 0.52)\n"                     /* one textcell() for both panels */
+    "    tx = textcell(vec2(fl.x < 0.0 ? (fl.x + 0.92) / cw : 14.0 + (fl.x - 0.55) / cw, (0.42 - fl.y) / ch));\n"
     "  hud += tx * step(abs(fl.y), 0.42);\n"
     "  col = mix(col, red, clamp(hud, 0.0, 1.0) * 0.9);\n"
     "  return vec4(col * u_bright, 1.0);\n"
