@@ -176,6 +176,13 @@ void dome_surface_begin(GLuint prog, const DomeFrame *f);
  * shared res. Each res keeps its own lens lookup, built the same way
  * from the same calibration. */
 void dome_surface_res(float res);
+/* show the surface last drawn again, without drawing it: for a still
+ * picture that only needs redrawing now and then. Call it in place of
+ * dome_surface_begin ... end (after dome_surface_res, if you use it);
+ * returns 0 if there is nothing to show again (another scene or res drew
+ * since, or the screen changed), and then draw it as usual. The scene
+ * must itself check that what it would draw has not changed. */
+int dome_surface_again(const DomeFrame *f);
 void dome_surface_end(void);
 
 /* ---- sound ------------------------------------------------------- */

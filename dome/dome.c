@@ -502,6 +502,7 @@ typedef struct {
 static Surf   g_surf[N_SURF];
 static int    g_surf_gen = 1;        /* bumped when the screen size changes */
 static float  g_want_res;            /* this frame's dome_surface_res(), 0 = shared */
+static Surf  *g_last_surf;           /* the surface dome_surface_begin last drew into */
 static GLuint g_cur_surface;
 
 static float lens_c(float phi) { return atan2f(sinf(phi), cosf(phi) + g_cal.offset); }
@@ -604,6 +605,7 @@ static void dirmap_build(float res)
 }
 
 /* make the surface for this frame's res current, building it if need be */
+static Surf *g_cur;
 static void surface_pick(void)
 {
     static unsigned tick;
@@ -620,9 +622,11 @@ static void surface_pick(void)
         g_dirmap_tex = use->dirmap; g_fbo = use->fbo; g_fbo_tex = use->tex;
         g_map_w = use->w; g_map_h = use->h;
         dirmap_build(r);
+        if (g_last_surf == use) g_last_surf = NULL;   /* what it held is gone */
         use->w = g_map_w; use->h = g_map_h; use->res = r; use->cal = g_cal; use->gen = g_surf_gen;
     }
     use->used = ++tick;
+    g_cur = use;
     g_dirmap_tex = use->dirmap; g_fbo = use->fbo; g_fbo_tex = use->tex;
     g_map_w = use->w; g_map_h = use->h; g_map_res = use->res;
 }
@@ -920,6 +924,7 @@ void dome_surface_begin(GLuint prog, const DomeFrame *f)
 {
     g_cur_surface = prog;
     surface_pick();
+    g_last_surf = g_cur;
     glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
     glViewport(0, 0, g_map_w, g_map_h);
     glDisable(GL_BLEND);
@@ -955,13 +960,32 @@ void dome_audio_uniforms(GLuint prog, const DomeFrame *f, float on)
     glUniform1f(glGetUniformLocation(prog, "u_live"),  a->live * on);
 }
 
+static void surface_composite(void);
+
 void dome_surface_end(void)
 {
     glBindBuffer(GL_ARRAY_BUFFER, g_quad_vbo);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void *)0);
     glEnableVertexAttribArray(0);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    surface_composite();
+}
 
+int dome_surface_again(const DomeFrame *f)
+{
+    surface_pick();
+    if (g_cur != g_last_surf || g_cur->gen != g_surf_gen) return 0;
+    g_surface_alpha = f->fade;
+    glBindBuffer(GL_ARRAY_BUFFER, g_quad_vbo);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void *)0);
+    glEnableVertexAttribArray(0);
+    surface_composite();
+    return 1;
+}
+
+/* put the offscreen surface on the screen */
+static void surface_composite(void)
+{
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, g_view_w, g_view_h);
     glEnable(GL_BLEND);
