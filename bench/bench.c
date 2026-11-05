@@ -65,7 +65,7 @@ static const int UPLOADS[][2] = {
 #define N_UPLOADS ((int)(sizeof UPLOADS / sizeof UPLOADS[0]))
 #define MAX_DOTS  200000
 
-static struct { float kind, level, cpu_ms; } L = { 0.0f, 1.0f, 0.0f };
+static struct { float kind, level, cpu_ms, res; } L = { 0.0f, 1.0f, 0.0f, 0.0f };
 
 static Param P[] = {
     { "kind",  &L.kind,  1.0f, 0.0f, K_KINDS - 1, 1,
@@ -75,6 +75,8 @@ static Param P[] = {
       "how much: a count per pixel, thousands of dots, upload size 1 to 7, or ms" },
     { "cpu_ms", &L.cpu_ms, 0.1f, 0.0f, 1000.0f, 0,
       "reported, not set: CPU time of each frame's update and draw, ms (eased)" },
+    { "res",   &L.res,   32.0f, 0.0f, 2048.0f, 0,
+      "this scene's own colour res (dome_surface_res), 0 = the shared res" },
 };
 
 /* one source for every kind; KIND and N are defined in front of it */
@@ -334,6 +336,7 @@ static void draw(const DomeFrame *f)
 {
     if (!g_prog) return;
     if (kind() == K_UPLOAD) upload(f);
+    dome_surface_res(L.res);
     dome_surface_begin(g_prog, f);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, g_noise_tex);
