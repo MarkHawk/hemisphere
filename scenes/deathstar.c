@@ -612,6 +612,7 @@ static void draw(const DomeFrame *f0)
     if ((hull_b > 0.0f && hull_k > 0.0f) || warm) {
         g_warm = 1;
         hull_bake();
+        if (style == 1) dome_surface_res(512.0f);   /* hull with the wireframe over it: too slow at 640 */
         dome_surface_begin(g_prog, f);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_CUBE_MAP, g_plate_tex);
