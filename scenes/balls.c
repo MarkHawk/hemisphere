@@ -789,6 +789,7 @@ static void draw(const DomeFrame *f)
     GLuint p = g_prog[style()];
     g_now = f->now;
     if (style() == 0) dome_surface_res(512.0f);     /* too slow at 640 on a Pi 3 */
+    if (style() == 10) dome_surface_res(512.0f);
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), f->now);
     glUniform2f(glGetUniformLocation(p, "u_rcs"), cosf(g_roll), sinf(g_roll));
