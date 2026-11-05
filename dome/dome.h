@@ -169,6 +169,13 @@ GLuint dome_surface_program_themed(const char *scene_glsl);
  * texture to unit 0; set your own uniforms and textures (unit 1 upwards)
  * between begin and end. end() renders and composites to the screen. */
 void dome_surface_begin(GLuint prog, const DomeFrame *f);
+/* ask for a colour surface res pixels across for this frame's
+ * dome_surface_begin calls, for a style too slow at the shared res (the
+ * view setting "res"). Call it each frame before dome_surface_begin; 0
+ * (and every new frame) means the shared res. Never sharper than the
+ * shared res. Each res keeps its own lens lookup, built the same way
+ * from the same calibration. */
+void dome_surface_res(float res);
 void dome_surface_end(void);
 
 /* ---- sound ------------------------------------------------------- */

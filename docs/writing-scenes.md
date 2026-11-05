@@ -62,6 +62,10 @@ that animates its own uniforms in `update()`. A scene is:
    shared colour themes (`theme(id, x)`); see `plasma.c`. The themes are a
    table drawn once at start, so every theme costs one texture read;
    `dome_theme_rgb()` gives the same colours on the CPU, for dots.
+   A style that can't hold 60 fps at the shared `res` can call
+   `dome_surface_res(r)` each frame before `dome_surface_begin()` to draw at
+   a lower res of its own (never sharper than the shared one). Each res
+   gets its own lens lookup, built once from the same calibration.
 3. Optionally, dots: `dome_points_init`, `dome_points_line`,
    `dome_points_upload`, then `dome_draw_points` each frame.
 4. Optionally, text: `dome_text_block` for lines across the equator (it

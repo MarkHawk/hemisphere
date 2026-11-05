@@ -81,7 +81,7 @@ install on the Pi, copy the two old files into `/home/pi/hemisphere`.
 | `tilt` | Leans the axis sideways (0 upright, 23 Earth-like) |
 | `wobble` | Slow nodding as it turns, in degrees (0 for steady) |
 | `rev_secs` | Seconds per full turn |
-| `res` | Colour resolution across the dome: lower is faster, higher is sharper |
+| `res` | Colour resolution across the dome: lower is faster, higher is sharper. A few slow styles draw at a lower res of their own, never sharper than this |
 | `view_dist` | How far away you stand, in globe radii. Sets how strongly recesses such as the dish show depth |
 | `display` | Which screen the WorldEye is on: 0 is the main one. Only matters on a PC with more than one screen (V steps through them) |
 

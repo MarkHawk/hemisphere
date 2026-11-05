@@ -485,6 +485,23 @@ static float  g_rect[4];             /* clip-space rectangle of the image */
 static Calib  g_map_cal;             /* calibration the map was built for */
 static float  g_map_res = -1;
 static int    g_max_tex = 2048;
+
+/* Colour surfaces: the shared one (view res) and any res a scene asks for
+ * with dome_surface_res(), each with its own lens lookup and offscreen
+ * buffer, built by the same dirmap_build() from the same calibration and
+ * kept, so switching scenes does not rebuild them. The globals above are
+ * the one in use. */
+#define N_SURF 3
+typedef struct {
+    GLuint dirmap, fbo, tex;
+    int    w, h, gen;
+    float  res;
+    Calib  cal;
+    unsigned used;
+} Surf;
+static Surf   g_surf[N_SURF];
+static int    g_surf_gen = 1;        /* bumped when the screen size changes */
+static float  g_want_res;            /* this frame's dome_surface_res(), 0 = shared */
 static GLuint g_cur_surface;
 
 static float lens_c(float phi) { return atan2f(sinf(phi), cosf(phi) + g_cal.offset); }
@@ -498,7 +515,7 @@ static float rho_of(float phi)
 
 #define LUT_N 4096
 
-static void dirmap_build(void)
+static void dirmap_build(float res)
 {
     Uint32 t0 = SDL_GetTicks();
     /* tabulate rho(phi) out to the cutoff, kept increasing */
@@ -527,7 +544,7 @@ static void dirmap_build(void)
 
     /* resolution: 'res' across the long side, never above screen pixels */
     float long_px = 2.0f * fmaxf(rx, ry) * hs;
-    float k = fminf(1.0f, g_view.res / long_px);
+    float k = fminf(1.0f, res / long_px);
     int w = (int)lroundf(2.0f * rx * hs * k), h = (int)lroundf(2.0f * ry * hs * k);
     if (w < 16) w = 16;
     if (h < 16) h = 16;
@@ -583,8 +600,34 @@ static void dirmap_build(void)
                (unsigned)(SDL_GetTicks() - t0));
     g_map_w = w; g_map_h = h;
     g_map_cal = g_cal;
-    g_map_res = g_view.res;
+    g_map_res = res;
 }
+
+/* make the surface for this frame's res current, building it if need be */
+static void surface_pick(void)
+{
+    static unsigned tick;
+    float r = g_view.res;
+    if (g_want_res > 0.0f && g_want_res < r) r = g_want_res;
+    Surf *use = NULL, *old = &g_surf[0];
+    for (int i = 0; i < N_SURF; i++) {
+        Surf *s = &g_surf[i];
+        if (s->res == r && s->gen == g_surf_gen && !memcmp(&s->cal, &g_cal, sizeof g_cal)) use = s;
+        if (s->used < old->used) old = s;
+    }
+    if (!use) {
+        use = old;
+        g_dirmap_tex = use->dirmap; g_fbo = use->fbo; g_fbo_tex = use->tex;
+        g_map_w = use->w; g_map_h = use->h;
+        dirmap_build(r);
+        use->w = g_map_w; use->h = g_map_h; use->res = r; use->cal = g_cal; use->gen = g_surf_gen;
+    }
+    use->used = ++tick;
+    g_dirmap_tex = use->dirmap; g_fbo = use->fbo; g_fbo_tex = use->tex;
+    g_map_w = use->w; g_map_h = use->h; g_map_res = use->res;
+}
+
+void dome_surface_res(float res) { g_want_res = res; }
 
 static void tex_params(GLuint t, GLint filter)
 {
@@ -598,9 +641,13 @@ static void tex_params(GLuint t, GLint filter)
 static void surface_init(void)
 {
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &g_max_tex);
-    glGenTextures(1, &g_dirmap_tex); tex_params(g_dirmap_tex, GL_NEAREST);
-    glGenTextures(1, &g_fbo_tex);    tex_params(g_fbo_tex, GL_LINEAR);
-    glGenFramebuffers(1, &g_fbo);
+    for (int i = 0; i < N_SURF; i++) {
+        Surf *s = &g_surf[i];
+        glGenTextures(1, &s->dirmap); tex_params(s->dirmap, GL_NEAREST);
+        glGenTextures(1, &s->tex);    tex_params(s->tex, GL_LINEAR);
+        glGenFramebuffers(1, &s->fbo);
+        s->res = -1;
+    }
     static const float quad[8] = { 0,0, 1,0, 0,1, 1,1 };
     glGenBuffers(1, &g_quad_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, g_quad_vbo);
@@ -872,6 +919,7 @@ static void themes_check(void)
 void dome_surface_begin(GLuint prog, const DomeFrame *f)
 {
     g_cur_surface = prog;
+    surface_pick();
     glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
     glViewport(0, 0, g_map_w, g_map_h);
     glDisable(GL_BLEND);
@@ -1781,7 +1829,7 @@ int dome_run(int argc, char **argv, const char *title,
             SDL_GL_GetDrawableSize(win, &w, &h);
             if (w != g_view_w || h != g_view_h) {
                 g_view_w = w; g_view_h = h;
-                g_map_res = -1;
+                g_surf_gen++;
                 printf("Screen: %dx%d\n", w, h);
             }
         }
@@ -1899,9 +1947,9 @@ int dome_run(int argc, char **argv, const char *title,
             audio_t = now;
         }
 
-        /* rebuild the lens lookup whenever calibration or res changes */
-        if (memcmp(&g_map_cal, &g_cal, sizeof g_cal) || g_map_res != g_view.res)
-            dirmap_build();
+        /* each frame starts on the shared res; dome_surface_begin builds
+         * the lens lookup again if calibration or res has changed */
+        g_want_res = 0.0f;
 
         DomeFrame f;
         f.now = now; f.dt = dt; f.spin = spin;
