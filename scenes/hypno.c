@@ -353,6 +353,7 @@ static void draw(const DomeFrame *f)
 {
     int s = style();
     GLuint p = g_prog[s];
+    if (s == 9) dome_surface_res(512.0f);      /* the geodesic: its colour waves at 512 */
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), g_t);
     glUniform1f(glGetUniformLocation(p, "u_scale"), L.scale);
