@@ -138,7 +138,8 @@ Settings: `theme`, `speed`, `scale`, `bands`, `sat`, `bright`.
 Settings: `theme`, `set` (0 Julia, 1 Mandelbrot; **M** switches),
 `edge` (under 1 gives solid shapes, over 1 lacy dust), `speed`, `iter`
 (detail; more is slower, 32 to start), `zoom`, `hue`, `bands` (how fast the colours
-cycle), `glow` (brightness inside the set). Infinity sits at the north
+cycle), `glow` (brightness inside the set). Julia runs at a steady 30
+fps on a Pi 3, as it cannot hold 60. Infinity sits at the north
 pole, so the top of the globe is the dark outside of the set. The
 Mandelbrot set is the map of every Julia set: it stays still while the
 globe turns it.
@@ -410,7 +411,8 @@ home, 3 aurora, 4 storms), `speed` (the drift and shimmer), `home_lat` and
 `home_lon`, `zoom` (over home: 1, the default, shows the whole side of
 the Earth round home; up to 6 zooms in), `drift` (clouds still or drifting with
 the prevailing winds: trade winds west, westerlies east, a made-up motion
-between the real three-hourly pictures), `cloud_op` (how thick the clouds
+between the real three-hourly pictures; over home with the clouds still,
+the view is drawn once a second, so it runs at full speed), `cloud_op` (how thick the clouds
 look), `coast` (coastlines glowing through the clouds), `lights` (city
 lights), `storm_speed` (hours of storm per second), `storm_zoom` (1, the
 default, shows the whole side of the Earth; up to 4 zooms in on the

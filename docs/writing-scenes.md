@@ -66,6 +66,9 @@ that animates its own uniforms in `update()`. A scene is:
    `dome_surface_res(r)` each frame before `dome_surface_begin()` to draw at
    a lower res of its own (never sharper than the shared one). Each res
    gets its own lens lookup, built once from the same calibration.
+   A still picture can call `dome_surface_again()` in place of drawing to
+   show the last one again, and a style that can't hold 60 but can hold
+   30 can call `dome_half_rate()` each frame for a steady 30 fps.
 3. Optionally, dots: `dome_points_init`, `dome_points_line`,
    `dome_points_upload`, then `dome_draw_points` each frame.
 4. Optionally, text: `dome_text_block` for lines across the equator (it
