@@ -591,6 +591,15 @@ static void draw(const DomeFrame *f)
     GLuint p = g_prog[s];
     float sun[3]; sun_dir(sun);
     if (s == 4) dome_surface_res(512.0f);      /* too slow at 640 on a Pi 3 */
+    /* over home with the clouds still: the picture only changes with the
+     * Sun, so draw it once a second and show it again in between */
+    static float again_t = -10.0f, again_cam[4];
+    static int again_style = -1;
+    static __typeof__(L) again_l;
+    int same = s == 2 && L.drift < 0.5f && again_style == 2 && f->now - again_t < 1.0f && f->now >= again_t
+               && !memcmp(&again_l, &L, sizeof L) && !memcmp(again_cam, g_cam, sizeof g_cam);
+    if (same && dome_surface_again(f)) goto dots;
+    again_t = f->now; again_style = s; again_l = L; memcpy(again_cam, g_cam, sizeof g_cam);
     dome_surface_begin(p, f);
     bind(p, "u_day", g_day, 1); bind(p, "u_night", g_night, 2); bind(p, "u_cloud", g_cloud, 3);
     bind(p, "u_mask", g_mask, 4); bind(p, "u_local", g_local, 5); bind(p, "u_aur", g_aur, 6);
@@ -616,6 +625,7 @@ static void draw(const DomeFrame *f)
         glUniform3fv(glGetUniformLocation(p, "u_cno"), 1, no);
     }
     dome_surface_end();
+dots:;
     mat3 still; m3_identity(still);
     float fa = f->fade;
     if (s == 4) {
