@@ -207,13 +207,8 @@ static const char TIEDYE[] =
  * drift in opposite directions ---- */
 static const char PAISLEY[] =
     U
-    "vec3 ink(float i){\n"
-    "  i = mod(i, 4.0);\n"
-    "  if (i < 1.0) return vec3(0.95, 0.70, 0.10);\n"     /* mustard */
-    "  if (i < 2.0) return vec3(0.85, 0.15, 0.20);\n"     /* red     */
-    "  if (i < 3.0) return vec3(0.10, 0.65, 0.60);\n"     /* teal    */
-    "  return vec3(0.85, 0.30, 0.65);\n"                  /* rose    */
-    "}\n"
+    "uniform sampler2D u_ink;\n"                         /* the four inks, INKS below */
+    "vec3 ink(float i){ return texture2D(u_ink, vec2((floor(i) + 0.5) / 4.0, 0.5)).rgb; }\n"
     "vec2 rot2(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }\n"
     "vec4 surface(vec3 dir, vec3 view){\n"
     "  float lat = asin(clamp(dir.y, -1.0, 1.0)), lon = atan(dir.x, dir.z);\n"
@@ -439,6 +434,13 @@ static void lava_blobs(GLuint p)
     glUniform4fv(glGetUniformLocation(p, "u_blob"), LAVA_BLOBS, b);
 }
 
+/* paisley's four inks: mustard, red, teal, rose, in a strip that wraps
+ * (a lookup is much quicker on the Pi than ifs) */
+static const unsigned char INKS[4][4] = {
+    { 242, 179, 26, 255 }, { 217, 38, 51, 255 }, { 26, 166, 153, 255 }, { 217, 77, 166, 255 },
+};
+static GLuint g_ink_tex;
+
 /* tie-dye's five dyes, then the first again, in a strip (a lookup is
  * much quicker on the Pi than choosing among them with ifs) */
 static const unsigned char DYES[6][4] = {
@@ -500,6 +502,21 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     if (s == 3) lava_blobs(p);
     if (s == 5) tiedye_folds(p);
+    if (s == 6) {
+        if (!g_ink_tex) {
+            glGenTextures(1, &g_ink_tex);
+            glBindTexture(GL_TEXTURE_2D, g_ink_tex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);   /* the index wraps at 4 */
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 4, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, INKS);
+        }
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, g_ink_tex);
+        glUniform1i(glGetUniformLocation(p, "u_ink"), 1);
+        glActiveTexture(GL_TEXTURE0);
+    }
     dome_surface_end();
     if (s == 7) spiro_draw(f);
 }
