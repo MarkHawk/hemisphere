@@ -56,25 +56,32 @@ static const char LIB[] =
     "vec2 pix(vec2 p){ float n = NP(); return (floor(p * n) + 0.5) / n; }\n"
     "float gaps(vec2 p){ vec2 f = fract(p * NP()); return mix(1.0, 0.72 + 0.28 * step(0.13, min(f.x, f.y)), u_grid); }\n"
     "float tri(float x){ return abs(fract(x) * 2.0 - 1.0); }\n"
+    "uniform sampler2D u_pal;\n"                                  /* PAL16 below, one texel each */
     "vec3 pal16(float i){\n"                                        /* a 16-colour home-computer palette */
-    "  i = mod(floor(i), 16.0);\n"
-    "  if (i < 1.0) return vec3(0.0);\n"
-    "  if (i < 2.0) return vec3(0.21, 0.16, 0.48);\n"
-    "  if (i < 3.0) return vec3(0.42, 0.23, 0.62);\n"
-    "  if (i < 4.0) return vec3(0.60, 0.20, 0.30);\n"
-    "  if (i < 5.0) return vec3(0.84, 0.33, 0.26);\n"
-    "  if (i < 6.0) return vec3(0.89, 0.55, 0.20);\n"
-    "  if (i < 7.0) return vec3(0.95, 0.80, 0.30);\n"
-    "  if (i < 8.0) return vec3(0.98, 0.95, 0.60);\n"
-    "  if (i < 9.0) return vec3(1.0);\n"
-    "  if (i < 10.0) return vec3(0.65, 0.95, 0.70);\n"
-    "  if (i < 11.0) return vec3(0.35, 0.80, 0.40);\n"
-    "  if (i < 12.0) return vec3(0.15, 0.55, 0.45);\n"
-    "  if (i < 13.0) return vec3(0.25, 0.70, 0.85);\n"
-    "  if (i < 14.0) return vec3(0.45, 0.50, 0.95);\n"
-    "  if (i < 15.0) return vec3(0.30, 0.30, 0.65);\n"
-    "  return vec3(0.12, 0.10, 0.25);\n"
+    "  return texture2D(u_pal, vec2((floor(i) + 0.5) / 16.0, 0.5)).rgb;\n"
     "}\n";
+
+/* the 16-colour palette pal16() reads, in a strip (a lookup is much
+ * quicker on the Pi than choosing among 16 colours with ifs) */
+static const unsigned char PAL16[16][4] = {
+    {   0,   0,   0, 255 },
+    {  54,  41, 122, 255 },
+    { 107,  59, 158, 255 },
+    { 153,  51,  76, 255 },
+    { 214,  84,  66, 255 },
+    { 227, 140,  51, 255 },
+    { 242, 204,  76, 255 },
+    { 250, 242, 153, 255 },
+    { 255, 255, 255, 255 },
+    { 166, 242, 178, 255 },
+    {  89, 204, 102, 255 },
+    {  38, 140, 115, 255 },
+    {  64, 178, 217, 255 },
+    { 115, 128, 242, 255 },
+    {  76,  76, 166, 255 },
+    {  31,  26,  64, 255 },
+};
+static GLuint g_pal_tex;
 
 /* ---- 0: digital rain ---- */
 static const char RAIN[] =
@@ -2662,6 +2669,19 @@ static void draw(const DomeFrame *f)
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     glUniform1f(glGetUniformLocation(p, "u_grid"), floorf(L.grid + 0.5f));
     if (s == 3) maze_uniforms(p);
+    if (!g_pal_tex) {
+        glGenTextures(1, &g_pal_tex);
+        glBindTexture(GL_TEXTURE_2D, g_pal_tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);   /* so the index wraps at 16 */
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 16, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, PAL16);
+    }
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, g_pal_tex);
+    glUniform1i(glGetUniformLocation(p, "u_pal"), 3);
+    glActiveTexture(GL_TEXTURE0);
     if (s == 7) tp_uniforms(p);
     if (s == 5) glUniform4f(glGetUniformLocation(p, "u_g"), 0, A.flash > 0 ? A.flash : 0.0f, 0, 0);
     dome_surface_end();
