@@ -52,10 +52,11 @@ static Param P[] = {
 };
 
 static const char LIB[] =
-    "uniform float u_t, u_roll, u_bright, u_shine;\n"
+    "uniform float u_t, u_bright, u_shine;\n"
+    "uniform vec2 u_rcs;\n"                                         /* cos and sin of the roll */
     "const float PHI = 1.6180340;\n"
     /* the ball's own frame, tumbled end over end */
-    "vec3 ball(vec3 d){ float c = cos(u_roll), s = sin(u_roll); return vec3(d.x, c * d.y - s * d.z, s * d.y + c * d.z); }\n"
+    "vec3 ball(vec3 d){ float c = u_rcs.x, s = u_rcs.y; return vec3(d.x, c * d.y - s * d.z, s * d.y + c * d.z); }\n"
     /* light from the upper left; gloss sets how sharp the highlight is */
     "vec3 lit(vec3 c, vec3 view, float gloss, float spec){\n"
     "  vec3 Lt = normalize(vec3(-0.45, 0.55, 0.70));\n"
@@ -744,7 +745,7 @@ static void draw(const DomeFrame *f)
     GLuint p = g_prog[style()];
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), f->now);
-    glUniform1f(glGetUniformLocation(p, "u_roll"), g_roll);
+    glUniform2f(glGetUniformLocation(p, "u_rcs"), cosf(g_roll), sinf(g_roll));
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
     glUniform1f(glGetUniformLocation(p, "u_shine"), L.shine);
     if (style() == 10) puzzle_uniforms(p, 0);
