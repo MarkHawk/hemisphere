@@ -69,19 +69,18 @@ static const char LIB[] =
     "uniform vec3 u_sun;\n"
     "uniform vec4 u_lb;\n"                   /* local picture: lon0, lon1, lat0, lat1 (radians) */
     "uniform vec4 u_cam;\n"                  /* view centre lat, lon (radians), zoom, use it */
+    "uniform vec3 u_cup, u_cea, u_cno;\n"    /* the view centre's up, east and north (CPU) */
     "vec2 lluv(float lat, float lon){ return vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927); }\n"
     /* the Earth-fixed direction for a point of the dome: either the turning
      * globe (dir), or a view centred on u_cam and zoomed in */
     "vec3 earth(vec3 dir, vec3 view){\n"
     "  if (u_cam.w < 0.5) return dir;\n"
     "  float th = acos(clamp(view.z, -1.0, 1.0)) / u_cam.z;\n"
-    "  float ph = atan(view.y, view.x);\n"
-    "  vec3 v = vec3(sin(th) * cos(ph), sin(th) * sin(ph), cos(th));\n"
-    "  float la = u_cam.x, lo = u_cam.y;\n"
-    "  vec3 up = vec3(cos(la) * sin(lo), sin(la), cos(la) * cos(lo));\n"
-    "  vec3 ea = vec3(cos(lo), 0.0, -sin(lo));\n"
-    "  vec3 no = cross(up, ea);\n"
-    "  return normalize(ea * v.x + no * v.y + up * v.z);\n"
+    /* cos and sin of the angle round the centre, without an atan */
+    "  float r = length(view.xy);\n"
+    "  vec2 cs = r > 1e-6 ? view.xy / r : vec2(1.0, 0.0);\n"
+    "  vec3 v = vec3(sin(th) * cs, cos(th));\n"
+    "  return normalize(u_cea * v.x + u_cno * v.y + u_cup * v.z);\n"
     "}\n"
     "float cloudsat(vec2 uv, float lat, float lon){\n"
     "  if (u_flow < 0.5) return texture2D(u_cloud, uv).r;\n"
@@ -606,6 +605,15 @@ static void draw(const DomeFrame *f)
     glUniform3fv(glGetUniformLocation(p, "u_sun"), 1, sun);
     glUniform4fv(glGetUniformLocation(p, "u_lb"), 1, g_lb);
     glUniform4fv(glGetUniformLocation(p, "u_cam"), 1, g_cam);
+    {   /* the view centre's axes, the same for every pixel */
+        float la = g_cam[0], lo = g_cam[1];
+        float up[3] = { cosf(la) * sinf(lo), sinf(la), cosf(la) * cosf(lo) };
+        float ea[3] = { cosf(lo), 0.0f, -sinf(lo) };
+        float no[3] = { up[1] * ea[2] - up[2] * ea[1], up[2] * ea[0] - up[0] * ea[2], up[0] * ea[1] - up[1] * ea[0] };
+        glUniform3fv(glGetUniformLocation(p, "u_cup"), 1, up);
+        glUniform3fv(glGetUniformLocation(p, "u_cea"), 1, ea);
+        glUniform3fv(glGetUniformLocation(p, "u_cno"), 1, no);
+    }
     dome_surface_end();
     mat3 still; m3_identity(still);
     float fa = f->fade;
