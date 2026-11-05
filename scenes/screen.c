@@ -365,16 +365,19 @@ static const char NOUGHTS[] =
     "vec4 surface(vec3 dir, vec3 view){\n"
     POLAR
     "  vec3 col = vec3(0.0, 0.01, 0.03) * (1.0 + 0.3 * sin(fl.y * 300.0));\n"
+    /* which board this pixel is on, then one board() call */
+    "  float bk = -1.0, bsz = 23.0; vec2 bq = vec2(0.0);\n"
     "  if (a < 22.0) {\n"
     "    vec2 q = (fl - vec2(0.0, 0.045)) / 0.26 + 0.5;\n"
-    "    if (q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) col += board(0.0, q, 23.0);\n"
+    "    if (q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) { bk = 0.0; bq = q; }\n"
     "  } else if (a > 26.0 && a < 52.0) {\n"
     "    float x = u * 8.0;\n"
-    "    col += board(1.0 + floor(x), vec2(fract(x), (a - 26.0) / 26.0), 26.0);\n"
+    "    bk = 1.0 + floor(x); bq = vec2(fract(x), (a - 26.0) / 26.0); bsz = 26.0;\n"
     "  } else if (a > 56.0 && a < 86.5) {\n"
     "    float x = u * 14.0;\n"
-    "    col += board(9.0 + floor(x), vec2(fract(x), (a - 56.0) / 30.5), 28.0);\n"
+    "    bk = 9.0 + floor(x); bq = vec2(fract(x), (a - 56.0) / 30.5); bsz = 28.0;\n"
     "  }\n"
+    "  if (bk > -0.5) col += board(bk, bq, bsz);\n"
     "  col *= 1.0 - 0.8 * u_b;\n"                            /* the boards dim at the end */
     /* the score under the middle board, and the verdict, big, at the end */
     "  float sc = textcell(vec2((fl.x + 0.143) / 0.022, (-0.115 - fl.y) / 0.036));\n"
