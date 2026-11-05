@@ -598,6 +598,7 @@ static void draw(const DomeFrame *f)
     pupil = fmaxf(0.08f, fminf(0.85f, pupil));
 
     GLuint p = g_prog;
+    dome_surface_res(512.0f);                  /* too slow at 640 on a Pi 3 */
     dome_surface_begin(p, f);
     for (int i = 0; i < 3; i++) {
         static const char *NM[3] = { "u_iris", "u_scl", "u_lid" };
