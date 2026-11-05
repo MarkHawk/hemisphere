@@ -590,6 +590,7 @@ static void draw(const DomeFrame *f)
     int s = style();
     GLuint p = g_prog[s];
     float sun[3]; sun_dir(sun);
+    if (s == 4) dome_surface_res(512.0f);      /* too slow at 640 on a Pi 3 */
     dome_surface_begin(p, f);
     bind(p, "u_day", g_day, 1); bind(p, "u_night", g_night, 2); bind(p, "u_cloud", g_cloud, 3);
     bind(p, "u_mask", g_mask, 4); bind(p, "u_local", g_local, 5); bind(p, "u_aur", g_aur, 6);
