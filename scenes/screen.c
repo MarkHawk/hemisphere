@@ -1077,6 +1077,7 @@ static void draw(const DomeFrame *f)
     default: break;
     }
 
+    if (s == 1) dome_surface_res(512.0f);      /* too slow at 640 on a Pi 3 */
     dome_surface_begin(p, f);
     glUniform1f(glGetUniformLocation(p, "u_t"), g_t);
     glUniform1f(glGetUniformLocation(p, "u_bright"), L.bright);
